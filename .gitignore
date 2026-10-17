@@ -1,0 +1,8 @@
+# Windows metadata
+desktop.ini
+Thumbs.db
+
+# Local environment files
+.env
+.env.*
+!.env.example
