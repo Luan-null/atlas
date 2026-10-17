@@ -47,6 +47,7 @@ Se a música não começar automaticamente, clique no controle de alto-falante n
 - `assets/video/loop.mp4` — vídeo usado como fundo animado.
 - `assets/video/atlas title game.mp4` — vídeo de abertura mantido como material do projeto; ainda não é usado na tela atual.
 - `assets/img/atlas-title-scene.png` — imagem de apoio quando o vídeo não toca.
+- `assets/img/atlas-social-preview.jpg` — imagem 1200 × 630 usada na prévia de compartilhamento.
 - `assets/img/logo.png` — wordmark Atlas.
 - `assets/img/favicon.png` — ícone da página.
 - `assets/img/atlas-map.svg` — estudo vetorial anterior do mapa.
