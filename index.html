@@ -29,7 +29,19 @@
 <body>
   <div id="app" class="app-shell">
     <main id="view" class="view" aria-live="polite"></main>
+    <audio id="entry-start-sound" src="assets/audio/paper.mp3" preload="auto" aria-hidden="true"></audio>
   </div>
+  <div class="screen-gate" role="status" aria-labelledby="screen-gate-title">
+    <div class="screen-gate__content">
+      <img src="assets/img/logo.png" alt="Atlas" />
+      <p class="screen-gate__eyebrow">ACESSO PELO COMPUTADOR</p>
+      <h1 id="screen-gate-title">O Atlas está sendo preparado para telas maiores.</h1>
+      <p>A versão para celular virá mais adiante. Por enquanto, acesse pelo computador.</p>
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+  <script src="js/supabase-config.js" defer></script>
+  <script src="js/supabase-client.js" defer></script>
   <script src="js/app.js" defer></script>
 </body>
 </html>
