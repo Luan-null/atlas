@@ -6,7 +6,18 @@ let routeTransitionTimer = 0;
 let entrySession = null;
 
 function getRoute() {
-  return window.location.hash === '#login' ? 'login' : 'home';
+  const route = window.location.hash.slice(1);
+  return ['login', 'profile-setup', 'first-game'].includes(route) ? route : 'home';
+}
+
+function escapeHTML(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;',
+  })[character]);
 }
 
 function navigateTo(route) {
@@ -46,6 +57,10 @@ function renderRoute() {
 
   if (getRoute() === 'login') {
     cleanupCurrentScreen = renderLogin();
+  } else if (getRoute() === 'profile-setup') {
+    cleanupCurrentScreen = renderProfileSetup();
+  } else if (getRoute() === 'first-game') {
+    cleanupCurrentScreen = renderFirstGame();
   } else if (entrySession) {
     view.replaceChildren(entrySession.element);
     entrySession.resume();
@@ -348,8 +363,10 @@ function renderLogin() {
     setFeedback('Conta conectada. Carregando seu save…');
 
     try {
-      await backend.loadSave(user.id);
+      const save = await backend.loadSave(user.id);
       setFeedback('Conta conectada. Seu save está pronto para receber o progresso do Atlas.', 'success');
+      const nextRoute = save.progress?.profile?.setupComplete ? 'first-game' : 'profile-setup';
+      window.setTimeout(() => navigateTo(nextRoute), 550);
     } catch (error) {
       setFeedback(getSaveErrorMessage(error), 'error');
     }
@@ -444,6 +461,630 @@ function renderLogin() {
 
   email.focus({ preventScroll: true });
   restoreSession();
+  return () => {};
+}
+
+function getPlatformNames(platforms = []) {
+  const labels = {
+    GBA: 'Game Boy Advance',
+    DS: 'Nintendo DS',
+    '3DS': 'Nintendo 3DS',
+    N64: 'Nintendo 64',
+    GBC: 'Game Boy Color',
+    GB: 'Game Boy',
+    SNES: 'Super Nintendo',
+    Switch: 'Nintendo Switch',
+    PC: 'PC',
+    Android: 'Android',
+    iOS: 'iOS',
+    'PS4': 'PlayStation 4',
+    'Xbox One': 'Xbox One',
+    various: 'vários sistemas',
+  };
+  return platforms.map((platform) => labels[platform] || platform).join(' · ');
+}
+
+function renderGameSignalButtons(gameId, selectedStatus = '') {
+  const signals = [
+    ['played', 'Joguei'],
+    ['liked', 'Gostei'],
+    ['favorite', 'Favorito'],
+  ];
+  return `
+    <div class="profile-game-signals" role="group" aria-label="Como foi sua experiência?" data-game-id="${escapeHTML(gameId)}">
+      ${signals.map(([status, label]) => `
+        <button class="profile-signal${selectedStatus === status ? ' is-selected' : ''}" type="button" data-status="${status}" aria-pressed="${selectedStatus === status}">${label}</button>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderGameCard(game, selectedStatus = '') {
+  const platformText = getPlatformNames(game.platforms || []);
+  const detail = [game.franchise, game.release_year, platformText].filter(Boolean).join(' · ');
+  return `
+    <article class="profile-game-card" data-game-id="${escapeHTML(game.id)}" data-franchise="${escapeHTML(game.franchise || '')}">
+      <div class="profile-game-card__info">
+        <h3>${escapeHTML(game.title)}</h3>
+        <p>${escapeHTML(detail)}</p>
+      </div>
+      ${renderGameSignalButtons(game.id, selectedStatus)}
+    </article>
+  `;
+}
+
+async function getSignedInSave() {
+  const backend = window.AtlasBackend;
+  if (!backend?.client) throw new Error('NO_BACKEND');
+  const { data, error } = await backend.client.auth.getSession();
+  if (error) throw error;
+  if (!data.session?.user) return null;
+  const save = await backend.loadSave(data.session.user.id);
+  return { backend, save, user: data.session.user };
+}
+
+function renderProfileSetup() {
+  view.innerHTML = `
+    <section class="profile-screen" aria-labelledby="profile-setup-title">
+      <img class="profile-screen__backdrop" src="assets/img/atlas-title-scene.png" alt="" />
+      <div class="profile-shell">
+        <header class="profile-heading">
+          <div>
+            <p class="login-eyebrow">PONTO DE PARTIDA</p>
+            <h1 id="profile-setup-title">Vamos preparar sua primeira jornada</h1>
+            <p>Conte um pouco sobre os jogos que fazem parte da sua história. Rejogar também vale.</p>
+          </div>
+          <button class="profile-signout" type="button">Sair da conta</button>
+        </header>
+
+        <form class="profile-setup-layout">
+          <section class="profile-panel profile-games-panel" aria-labelledby="profile-games-title">
+            <div class="profile-panel__heading">
+              <div>
+                <h2 id="profile-games-title">Jogos que você conhece</h2>
+                <p>Marque a experiência mais forte que combina com cada jogo. “Gostei” e “Favorito” também contam como joguei.</p>
+              </div>
+              <span class="profile-game-count" aria-live="polite"></span>
+            </div>
+
+            <label class="profile-search-label" for="profile-game-search">Buscar na seleção</label>
+            <input class="profile-game-search" id="profile-game-search" type="search" placeholder="Nome ou franquia" autocomplete="off" />
+            <div class="profile-igdb-tools">
+              <button class="profile-igdb-search" type="button">Buscar também no catálogo do IGDB</button>
+              <p class="profile-igdb-note">A busca é ampla; só os jogos que você adicionar entram no Atlas. Dados e capas: IGDB.</p>
+              <p class="profile-igdb-feedback" role="status" aria-live="polite"></p>
+              <div class="profile-igdb-results" aria-label="Resultados do IGDB" aria-live="polite"></div>
+            </div>
+            <div class="profile-game-filters" role="group" aria-label="Filtrar jogos">
+              <button type="button" class="is-active" data-filter="all" aria-pressed="true">Todos</button>
+              <button type="button" data-filter="pokemon" aria-pressed="false">Pokémon</button>
+              <button type="button" data-filter="zelda" aria-pressed="false">Zelda</button>
+              <button type="button" data-filter="other" aria-pressed="false">Outros</button>
+            </div>
+            <div class="profile-game-list" aria-label="Catálogo inicial" aria-live="polite">
+              <p class="profile-feedback">Carregando o catálogo inicial…</p>
+            </div>
+          </section>
+
+          <aside class="profile-panel profile-preferences" aria-labelledby="profile-access-title">
+            <p class="login-eyebrow">PREFERÊNCIAS</p>
+            <h2 id="profile-access-title">Onde você consegue jogar?</h2>
+            <p class="profile-panel__copy">Isso ajuda a sugerir jogos que cabem no seu acesso atual.</p>
+
+            <label class="profile-choice">
+              <input type="checkbox" name="playContext" value="pc-emulation" checked />
+              <span><strong>PC com emulação</strong><small>Para jogos de consoles e portáteis</small></span>
+            </label>
+            <label class="profile-choice">
+              <input type="checkbox" name="playContext" value="pc" />
+              <span><strong>Jogos de PC</strong><small>Jogos disponíveis para computador</small></span>
+            </label>
+            <label class="profile-choice">
+              <input type="checkbox" name="playContext" value="android" checked />
+              <span><strong>Android</strong><small>Jogos leves para celular</small></span>
+            </label>
+
+            <div class="profile-replay-setting">
+              <label class="profile-choice">
+                <input type="checkbox" name="replayAllowed" checked />
+                <span><strong>Posso rejogar jogos conhecidos</strong><small>O Atlas pode considerar títulos que você já jogou.</small></span>
+              </label>
+            </div>
+
+            <p class="profile-feedback" role="status" aria-live="polite"></p>
+            <button class="button primary profile-submit" type="submit">
+              <span>ME MOSTRE O PRIMEIRO JOGO</span><span aria-hidden="true">→</span>
+            </button>
+            <p class="profile-privacy-note">Você poderá mudar essas respostas depois.</p>
+          </aside>
+        </form>
+      </div>
+    </section>
+  `;
+
+  const screen = view.querySelector('.profile-screen');
+  const form = view.querySelector('.profile-setup-layout');
+  const list = view.querySelector('.profile-game-list');
+  const search = view.querySelector('.profile-game-search');
+  const igdbSearchButton = view.querySelector('.profile-igdb-search');
+  const igdbFeedback = view.querySelector('.profile-igdb-feedback');
+  const igdbResults = view.querySelector('.profile-igdb-results');
+  const filters = [...view.querySelectorAll('.profile-game-filters button')];
+  const count = view.querySelector('.profile-game-count');
+  const feedback = view.querySelector('.profile-preferences .profile-feedback');
+  const submitButton = view.querySelector('.profile-submit');
+  const signoutButton = view.querySelector('.profile-signout');
+  submitButton.disabled = true;
+  let games = [];
+  let ratings = new Map();
+  let loadedProgress = null;
+  let activeFilter = 'all';
+  let loading = true;
+  let igdbGames = [];
+
+  function updateCount() {
+    const countValue = ratings.size;
+    count.textContent = countValue ? `${countValue} ${countValue === 1 ? 'jogo marcado' : 'jogos marcados'}` : 'Opcional';
+  }
+
+  function updateGames() {
+    const query = search.value.trim().toLocaleLowerCase('pt-BR');
+    const visibleGames = games.filter((game) => {
+      const matchesFilter = activeFilter === 'all' ||
+        (activeFilter === 'pokemon' && game.franchise === 'Pokémon') ||
+        (activeFilter === 'zelda' && game.franchise === 'The Legend of Zelda') ||
+        (activeFilter === 'other' && !['Pokémon', 'The Legend of Zelda'].includes(game.franchise));
+      const matchesSearch = !query || `${game.title} ${game.franchise || ''}`.toLocaleLowerCase('pt-BR').includes(query);
+      return matchesFilter && matchesSearch;
+    });
+
+    list.innerHTML = loading
+      ? '<p class="profile-feedback">Carregando o catálogo inicial…</p>'
+      : visibleGames.length
+        ? visibleGames.map((game) => renderGameCard(game, ratings.get(game.id))).join('')
+        : '<p class="profile-feedback">Nenhum jogo encontrado. Tente outro nome ou filtro.</p>';
+    updateCount();
+  }
+
+  function setFeedback(message, tone = 'info') {
+    feedback.textContent = message;
+    feedback.dataset.tone = tone;
+  }
+
+  function setIGDBFeedback(message, tone = 'info') {
+    igdbFeedback.textContent = message;
+    igdbFeedback.dataset.tone = tone;
+  }
+
+  function renderIGDBResults() {
+    igdbResults.innerHTML = igdbGames.map((game) => {
+      const alreadyAdded = games.some((catalogGame) =>
+        catalogGame.id === game.id || (catalogGame.source_id && catalogGame.source_id === game.source_id)
+      );
+      const detail = [game.franchise, game.release_year, getPlatformNames(game.platforms || [])]
+        .filter(Boolean)
+        .join(' · ');
+      const cover = typeof game.cover_url === 'string' && /^https:\/\/images\.igdb\.com\//.test(game.cover_url)
+        ? `<img src="${escapeHTML(game.cover_url)}" alt="" loading="lazy" />`
+        : '<span class="profile-igdb-result__cover-placeholder" aria-hidden="true"></span>';
+
+      return `
+        <article class="profile-igdb-result">
+          ${cover}
+          <div class="profile-igdb-result__info">
+            <h3>${escapeHTML(game.title)}</h3>
+            <p>${escapeHTML(detail || 'Detalhes indisponíveis')}</p>
+            ${game.short_description ? `<p class="profile-igdb-result__summary">${escapeHTML(game.short_description)}</p>` : ''}
+          </div>
+          <button class="profile-igdb-add" type="button" data-game-id="${escapeHTML(game.source_id)}" ${alreadyAdded ? 'disabled' : ''}>
+            ${alreadyAdded ? 'Já está no Atlas' : 'Adicionar ao Atlas'}
+          </button>
+        </article>
+      `;
+    }).join('');
+  }
+
+  function getFriendlyIGDBError(error) {
+    if (error.code === 'IGDB_NOT_CONFIGURED') {
+      return 'Falta configurar IGDB_CLIENT_ID e IGDB_CLIENT_SECRET nos Secrets do Supabase. Veja SUPABASE_SETUP.md.';
+    }
+    if (error.code === 'AUTH_REQUIRED') {
+      window.location.hash = 'login';
+      return 'Entre na sua conta para buscar jogos.';
+    }
+    if (error.code === 'IGDB_RATE_LIMIT') return error.message;
+    if (error.message?.includes('Failed to send a request') || error.message?.includes('Function not found')) {
+      return 'A busca do IGDB ainda não está publicada. Publique a função igdb-catalog no Supabase; as etapas estão em SUPABASE_SETUP.md.';
+    }
+    return error.message || 'Não foi possível acessar o catálogo do IGDB agora.';
+  }
+
+  async function loadSetup() {
+    try {
+      const session = await getSignedInSave();
+      if (!session) {
+        window.location.hash = 'login';
+        return;
+      }
+
+      loadedProgress = session.save.progress || {};
+      const profile = loadedProgress.profile || {};
+      ratings = new Map((profile.gameSignals || []).map(({ gameId, status }) => [gameId, status]));
+      view.querySelector('[name="replayAllowed"]').checked = profile.replayAllowed !== false;
+
+      if (Array.isArray(profile.playContexts)) {
+        view.querySelectorAll('[name="playContext"]').forEach((input) => {
+          input.checked = profile.playContexts.includes(input.value);
+        });
+      }
+
+      games = await session.backend.loadGameCatalog();
+      renderIGDBResults();
+      loading = false;
+      if (!games.length) throw new Error('EMPTY_CATALOG');
+      updateGames();
+      submitButton.disabled = false;
+    } catch (error) {
+      loading = false;
+      list.innerHTML = '';
+      const message = error.message === 'EMPTY_CATALOG'
+        ? 'O catálogo ainda está vazio. Execute supabase/seed_games.sql no SQL Editor do Supabase.'
+        : ['42P01', 'PGRST205'].includes(error.code)
+          ? 'A tabela de jogos ainda não existe. Execute supabase/seed_games.sql no SQL Editor do Supabase.'
+          : ['42703', 'PGRST204'].includes(error.code)
+            ? 'Atualize o catálogo executando novamente a versão atual de supabase/seed_games.sql no SQL Editor do Supabase.'
+            : ['42501', 'PGRST301'].includes(error.code)
+              ? 'A conta não tem acesso ao catálogo. Execute supabase/seed_games.sql no SQL Editor do Supabase.'
+              : 'Não foi possível carregar os jogos. Confira a conexão e a configuração do Supabase.';
+      setFeedback(message, 'error');
+      list.innerHTML = `<p class="profile-feedback" data-tone="error">${escapeHTML(message)}</p>`;
+      submitButton.disabled = true;
+    }
+  }
+
+  filters.forEach((button) => button.addEventListener('click', () => {
+    activeFilter = button.dataset.filter;
+    filters.forEach((filter) => {
+      const selected = filter === button;
+      filter.classList.toggle('is-active', selected);
+      filter.setAttribute('aria-pressed', String(selected));
+    });
+    updateGames();
+  }));
+
+  search.addEventListener('input', updateGames);
+  igdbSearchButton.addEventListener('click', async () => {
+    const query = search.value.trim();
+    if (query.length < 2) {
+      setIGDBFeedback('Digite pelo menos 2 caracteres no campo de busca.', 'error');
+      return;
+    }
+
+    igdbSearchButton.disabled = true;
+    igdbResults.innerHTML = '';
+    setIGDBFeedback('Consultando o catálogo do IGDB…');
+    try {
+      const result = await window.AtlasBackend.searchIGDB(query);
+      igdbGames = result?.results || [];
+      renderIGDBResults();
+      setIGDBFeedback(igdbGames.length
+        ? `${igdbGames.length} resultados. Escolha quais deseja adicionar ao Atlas.`
+        : 'Nenhum jogo encontrado. Tente outro nome.');
+    } catch (error) {
+      setIGDBFeedback(getFriendlyIGDBError(error), 'error');
+    } finally {
+      igdbSearchButton.disabled = false;
+    }
+  });
+
+  igdbResults.addEventListener('click', async (event) => {
+    const button = event.target.closest('.profile-igdb-add');
+    if (!button || button.disabled) return;
+
+    button.disabled = true;
+    button.textContent = 'Adicionando…';
+    try {
+      const result = await window.AtlasBackend.importIGDBGame(button.dataset.gameId);
+      const importedGame = result?.game;
+      if (!importedGame) throw new Error('O Atlas não recebeu os dados do jogo importado.');
+
+      const existingIndex = games.findIndex((game) => game.id === importedGame.id);
+      if (existingIndex === -1) games.push(importedGame);
+      else games[existingIndex] = importedGame;
+
+      activeFilter = 'all';
+      filters.forEach((filter) => {
+        const selected = filter.dataset.filter === 'all';
+        filter.classList.toggle('is-active', selected);
+        filter.setAttribute('aria-pressed', String(selected));
+      });
+      search.value = importedGame.title;
+      updateGames();
+      renderIGDBResults();
+      setIGDBFeedback(`${importedGame.title} foi adicionado. Agora você pode marcar sua experiência com ele.`);
+    } catch (error) {
+      button.disabled = false;
+      button.textContent = 'Adicionar ao Atlas';
+      setIGDBFeedback(getFriendlyIGDBError(error), 'error');
+    }
+  });
+
+  list.addEventListener('click', (event) => {
+    const button = event.target.closest('.profile-signal');
+    if (!button) return;
+    const gameId = button.closest('.profile-game-signals').dataset.gameId;
+    const nextStatus = button.dataset.status;
+    if (ratings.get(gameId) === nextStatus) ratings.delete(gameId);
+    else ratings.set(gameId, nextStatus);
+    updateGames();
+  });
+
+  signoutButton.addEventListener('click', async () => {
+    const backend = window.AtlasBackend;
+    if (!backend?.client) return;
+    signoutButton.disabled = true;
+    try {
+      const { error } = await backend.client.auth.signOut();
+      if (error) throw error;
+      window.location.hash = 'home';
+    } catch {
+      setFeedback('Não foi possível sair da conta. Tente novamente.', 'error');
+      signoutButton.disabled = false;
+    }
+  });
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const playContexts = [...form.querySelectorAll('[name="playContext"]:checked')].map((input) => input.value);
+    if (!playContexts.length) {
+      setFeedback('Escolha pelo menos uma forma de jogar para filtrar a primeira sugestão.', 'error');
+      return;
+    }
+
+    const backend = window.AtlasBackend;
+    submitButton.disabled = true;
+    setFeedback('Organizando seu ponto de partida…');
+    try {
+      const profile = {
+        setupComplete: true,
+        gameSignals: [...ratings].map(([gameId, status]) => ({ gameId, status })),
+        playContexts,
+        replayAllowed: form.querySelector('[name="replayAllowed"]').checked,
+        updatedAt: new Date().toISOString(),
+      };
+      const suggestion = window.AtlasRecommendations.recommendFirstGame(games, profile);
+      if (!suggestion) {
+        setFeedback('Com essas escolhas, não há jogos disponíveis para sugerir. Marque outra forma de jogar ou permita considerar rejogos.', 'error');
+        submitButton.disabled = false;
+        return;
+      }
+      const nextProgress = {
+        ...loadedProgress,
+        profile,
+        firstRecommendation: {
+          gameId: suggestion.game.id,
+          reason: suggestion.reason,
+          seenGameIds: [],
+          generatedAt: new Date().toISOString(),
+        },
+      };
+      await backend.saveProgress(nextProgress);
+      window.location.hash = 'first-game';
+    } catch {
+      setFeedback('Não foi possível salvar seu perfil. Confira a conexão e tente novamente.', 'error');
+      submitButton.disabled = false;
+    }
+  });
+
+  loadSetup();
+  return () => {};
+}
+
+function renderFirstGame() {
+  view.innerHTML = `
+    <section class="profile-screen first-game-screen" aria-labelledby="first-game-title">
+      <img class="profile-screen__backdrop" src="assets/img/atlas-title-scene.png" alt="" />
+      <div class="first-game-shell">
+        <header class="profile-heading">
+          <div>
+            <p class="login-eyebrow">SUA PRIMEIRA SUGESTÃO</p>
+            <h1 id="first-game-title">Um primeiro território para explorar</h1>
+            <p>O Atlas cruzou seus interesses com novas possibilidades para abrir a Jornada.</p>
+          </div>
+          <button class="profile-signout" type="button">Sair da conta</button>
+        </header>
+        <article class="first-game-card" aria-live="polite">
+          <p class="profile-feedback">Preparando sua sugestão…</p>
+        </article>
+      </div>
+    </section>
+  `;
+
+  const card = view.querySelector('.first-game-card');
+  const signoutButton = view.querySelector('.profile-signout');
+  let loadedProgress = null;
+  let games = [];
+  let saving = false;
+
+  function setMessage(message, tone = 'info') {
+    const feedback = card.querySelector('.profile-feedback');
+    if (!feedback) return;
+    feedback.textContent = message;
+    feedback.dataset.tone = tone;
+  }
+
+  function renderSuggestion(suggestionState) {
+    const game = games.find((candidate) => candidate.id === suggestionState.gameId);
+    if (!game) {
+      card.innerHTML = '<p class="profile-feedback" data-tone="error">Não encontramos esse jogo no catálogo. Volte às seleções para gerar outra sugestão.</p><a class="profile-secondary-link" href="#profile-setup">Editar meu perfil</a>';
+      return;
+    }
+
+    const profile = loadedProgress.profile || {};
+    const isChosen = loadedProgress.currentMilestone?.gameId === game.id;
+    const tags = [...new Set([...(game.genre_tags || []), ...(game.mechanic_tags || [])])].slice(0, 5);
+    const tagChips = tags.map((tag) => `<span class="first-game-tag">${escapeHTML(window.AtlasRecommendations.formatTag(tag))}</span>`).join('');
+    const description = game.short_description || 'Uma experiência escolhida para ampliar seu repertório.';
+    const reason = suggestionState.reason || 'É uma experiência curada para ampliar seu repertório.';
+    const yearLabel = game.release_year ? `Lançado em ${game.release_year}` : 'Uma experiência da sua seleção';
+    const chosenMessage = isChosen
+      ? `<p class="first-game-feedback" role="status">${escapeHTML(game.title)} ficou registrado como seu ponto de partida.</p>`
+      : '';
+
+    card.innerHTML = `
+      <div class="first-game-card__copy">
+        <p class="login-eyebrow">${escapeHTML(game.franchise || 'DESCOBERTA')}</p>
+        <h2>${escapeHTML(game.title)}</h2>
+        <p class="first-game-year">${escapeHTML(yearLabel)} · ${escapeHTML(getPlatformNames(game.platforms || []))}</p>
+        <p class="first-game-description">${escapeHTML(description)}</p>
+        <div class="first-game-tags">${tagChips}</div>
+        <div class="first-game-reason">
+          <span>POR QUE ESTE JOGO?</span>
+          <p>${escapeHTML(reason)}</p>
+        </div>
+        ${chosenMessage}
+      </div>
+      <div class="first-game-actions">
+        <button class="button primary first-game-choose" type="button"${isChosen ? ' disabled' : ''}>
+          <span>${isChosen ? 'PONTO DE PARTIDA DEFINIDO' : 'COMEÇAR POR ESTE JOGO'}</span><span aria-hidden="true">→</span>
+        </button>
+        <button class="first-game-another" type="button">Ver outra sugestão</button>
+        <a class="profile-secondary-link" href="#profile-setup">Editar minhas seleções</a>
+      </div>
+      <p class="profile-feedback first-game-feedback-line" role="status" aria-live="polite"></p>
+    `;
+
+    const chooseButton = card.querySelector('.first-game-choose');
+    const anotherButton = card.querySelector('.first-game-another');
+
+    chooseButton.addEventListener('click', async () => {
+      if (saving) return;
+      saving = true;
+      chooseButton.disabled = true;
+      chooseButton.querySelector('span:first-child').textContent = 'SALVANDO…';
+      try {
+        const session = await getSignedInSave();
+        if (!session) {
+          window.location.hash = 'login';
+          return;
+        }
+        const newProgress = {
+          ...session.save.progress,
+          currentMilestone: { gameId: game.id, status: 'chosen', chosenAt: new Date().toISOString() },
+        };
+        await session.backend.saveProgress(newProgress);
+        loadedProgress = newProgress;
+        renderSuggestion(suggestionState);
+      } catch {
+        chooseButton.disabled = false;
+        chooseButton.querySelector('span:first-child').textContent = 'TENTAR NOVAMENTE';
+        setMessage('Não foi possível guardar sua escolha. Tente novamente.', 'error');
+      } finally {
+        saving = false;
+      }
+    });
+
+    anotherButton.addEventListener('click', async () => {
+      if (saving) return;
+      saving = true;
+      anotherButton.disabled = true;
+      anotherButton.textContent = 'Buscando outra possibilidade…';
+      try {
+        const session = await getSignedInSave();
+        if (!session) {
+          window.location.hash = 'login';
+          return;
+        }
+        const prior = session.save.progress.firstRecommendation || suggestionState;
+        const excludedIds = [...new Set([...(prior.seenGameIds || []), prior.gameId])];
+        const next = window.AtlasRecommendations.recommendFirstGame(games, session.save.progress.profile || {}, excludedIds);
+        if (!next) {
+          anotherButton.disabled = false;
+          anotherButton.textContent = 'Tentar outra vez';
+          setMessage('Não há outra opção neste catálogo com as suas opções atuais de acesso e rejogo.', 'error');
+          return;
+        }
+        const newRecommendation = {
+          gameId: next.game.id,
+          reason: next.reason,
+          seenGameIds: excludedIds,
+          generatedAt: new Date().toISOString(),
+        };
+        const newProgress = { ...session.save.progress, firstRecommendation: newRecommendation };
+        await session.backend.saveProgress(newProgress);
+        loadedProgress = newProgress;
+        renderSuggestion(newRecommendation);
+      } catch {
+        anotherButton.disabled = false;
+        anotherButton.textContent = 'Tentar outra vez';
+        setMessage('Não foi possível buscar outra sugestão. Tente novamente.', 'error');
+      } finally {
+        saving = false;
+      }
+    });
+  }
+
+  async function loadRecommendation() {
+    try {
+      const session = await getSignedInSave();
+      if (!session) {
+        window.location.hash = 'login';
+        return;
+      }
+      loadedProgress = session.save.progress || {};
+      if (!loadedProgress.profile?.setupComplete) {
+        window.location.hash = 'profile-setup';
+        return;
+      }
+      games = await session.backend.loadGameCatalog();
+      if (!games.length) {
+        const emptyCatalogError = new Error('EMPTY_CATALOG');
+        emptyCatalogError.code = 'EMPTY_CATALOG';
+        throw emptyCatalogError;
+      }
+      let suggestionState = loadedProgress.firstRecommendation;
+      let suggestion = suggestionState && games.some((game) => game.id === suggestionState.gameId)
+        ? { game: games.find((game) => game.id === suggestionState.gameId), reason: suggestionState.reason }
+        : window.AtlasRecommendations.recommendFirstGame(games, loadedProgress.profile);
+
+      if (!suggestion) {
+        card.innerHTML = '<p class="profile-feedback" data-tone="error">Não há jogos disponíveis para sugerir com as escolhas atuais. Edite seu perfil para ampliar o acesso ou permitir rejogos.</p><a class="profile-secondary-link" href="#profile-setup">Editar meu perfil</a>';
+        return;
+      }
+
+      if (!suggestionState || suggestionState.gameId !== suggestion.game.id) {
+        suggestionState = {
+          gameId: suggestion.game.id,
+          reason: suggestion.reason,
+          seenGameIds: [],
+          generatedAt: new Date().toISOString(),
+        };
+        loadedProgress = { ...loadedProgress, firstRecommendation: suggestionState };
+        await session.backend.saveProgress(loadedProgress);
+      }
+      renderSuggestion(suggestionState);
+    } catch (error) {
+      const message = error.code === 'EMPTY_CATALOG' || ['42P01', 'PGRST205'].includes(error.code)
+        ? 'O catálogo ainda não foi instalado. Execute supabase/seed_games.sql no SQL Editor do Supabase.'
+        : 'Não foi possível carregar a sugestão. Confira a conexão e o catálogo do Supabase.';
+      setMessage(message, 'error');
+    }
+  }
+
+  signoutButton.addEventListener('click', async () => {
+    const backend = window.AtlasBackend;
+    if (!backend?.client) return;
+    signoutButton.disabled = true;
+    try {
+      const { error } = await backend.client.auth.signOut();
+      if (error) throw error;
+      window.location.hash = 'home';
+    } catch {
+      signoutButton.disabled = false;
+    }
+  });
+
+  loadRecommendation();
   return () => {};
 }
 
