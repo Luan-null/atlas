@@ -117,6 +117,69 @@ function normalizeGame(game: Record<string, any>) {
   }
 }
 
+function normalizeTitle(value: string) {
+  return value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase('en')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .split(' ')
+    .filter((word) => word !== 'the' && word !== 'version')
+    .join(' ')
+}
+
+function coverTitleMatches(candidateTitle: string, catalogTitle: string) {
+  const candidate = normalizeTitle(candidateTitle)
+  const catalog = normalizeTitle(catalogTitle)
+  if (candidate === catalog) return true
+
+  // IGDB catalogs the base Minecraft game as "Minecraft: Java Edition".
+  const knownAliases: Record<string, string[]> = {
+    minecraft: ['minecraft java edition'],
+  }
+  return knownAliases[catalog]?.includes(candidate) ?? false
+}
+
+function getIGDBCoverMatch(
+  games: Array<Record<string, any>>,
+  title: string,
+  releaseYear: number | null,
+) {
+  const exactMatches = games.filter((game) =>
+    typeof game.name === 'string' &&
+    coverTitleMatches(game.name, title) &&
+    typeof game.cover?.image_id === 'string'
+  )
+
+  if (releaseYear !== null) {
+    const sameYear = exactMatches.filter((game) =>
+      Number.isFinite(game.first_release_date) &&
+      new Date(game.first_release_date * 1000).getUTCFullYear() === releaseYear
+    )
+    if (sameYear.length === 1) return sameYear[0]
+    if (sameYear.length > 1) return null
+
+    const closeYearMatches = exactMatches.flatMap((game) => {
+      if (!Number.isFinite(game.first_release_date)) return []
+      const year = new Date(game.first_release_date * 1000).getUTCFullYear()
+      return Math.abs(year - releaseYear) <= 1 ? [{ game, distance: Math.abs(year - releaseYear) }] : []
+    })
+    if (!closeYearMatches.length) return null
+
+    const nearestDistance = Math.min(...closeYearMatches.map(({ distance }) => distance))
+    const nearestMatches = closeYearMatches.filter(({ distance }) => distance === nearestDistance)
+    return nearestMatches.length === 1 ? nearestMatches[0].game : null
+  }
+
+  return exactMatches.length === 1 ? exactMatches[0] : null
+}
+
+function delay(milliseconds: number) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds))
+}
+
 async function getAppAccessToken(clientId: string, clientSecret: string) {
   if (cachedAppToken && cachedAppToken.expiresAt > Date.now() + 60_000) {
     return cachedAppToken.value
@@ -169,6 +232,60 @@ async function requestIGDB(query: string, clientId: string, accessToken: string)
   return await response.json() as Array<Record<string, any>>
 }
 
+async function backfillMissingCovers(ctx: any, clientId: string, accessToken: string) {
+  const { data: games, error } = await ctx.supabaseAdmin
+    .from('atlas_games')
+    .select('id, title, release_year')
+    .eq('is_profile_selectable', true)
+    .eq('source', 'atlas')
+    .is('cover_url', null)
+    .order('sort_order', { ascending: true })
+    .limit(40)
+
+  if (error) {
+    console.error('Atlas catalog cover lookup failed:', error.code, error.message)
+    throw new HttpError(500, 'COVER_LOOKUP_FAILED', 'Não foi possível consultar as capas que faltam no catálogo.')
+  }
+
+  let updated = 0
+  let unmatched = 0
+  for (const [index, game] of (games || []).entries()) {
+    if (index > 0) await delay(300)
+
+    const safeTitle = String(game.title || '').replaceAll('\\', '\\\\').replaceAll('"', '\\"')
+    const matches = await requestIGDB(
+      `search "${safeTitle}"; fields id,name,first_release_date,cover.image_id; limit 10;`,
+      clientId,
+      accessToken,
+    )
+    const match = getIGDBCoverMatch(matches, game.title, game.release_year ?? null)
+    if (!match) {
+      unmatched += 1
+      continue
+    }
+
+    const coverUrl = `https://images.igdb.com/igdb/image/upload/t_cover_big/${match.cover.image_id}.jpg`
+    const { data: changedRows, error: updateError } = await ctx.supabaseAdmin
+      .from('atlas_games')
+      .update({ cover_url: coverUrl })
+      .eq('id', game.id)
+      .is('cover_url', null)
+      .select('id')
+
+    if (updateError) {
+      console.error('Atlas catalog cover update failed:', updateError.code, updateError.message)
+      throw new HttpError(500, 'COVER_UPDATE_FAILED', 'Não foi possível salvar uma capa no catálogo.')
+    }
+    if (changedRows?.length) updated += 1
+  }
+
+  return {
+    scanned: games?.length || 0,
+    updated,
+    unmatched,
+  }
+}
+
 async function getIGDBCredentials() {
   const clientId = Deno.env.get('IGDB_CLIENT_ID')
   const clientSecret = Deno.env.get('IGDB_CLIENT_SECRET')
@@ -191,12 +308,16 @@ export default {
       }
 
       const action = payload.action
-      if (!['search', 'import'].includes(action)) {
+      if (!['search', 'import', 'backfill-covers'].includes(action)) {
         throw new HttpError(400, 'INVALID_ACTION', 'A ação solicitada não existe.')
       }
 
       const { clientId, clientSecret } = await getIGDBCredentials()
       const accessToken = await getAppAccessToken(clientId, clientSecret)
+
+      if (action === 'backfill-covers') {
+        return jsonResponse(await backfillMissingCovers(ctx, clientId, accessToken))
+      }
 
       if (action === 'search') {
         const rawQuery = typeof payload.query === 'string' ? payload.query.trim().replace(/\s+/g, ' ') : ''

@@ -502,11 +502,17 @@ function renderGameSignalButtons(gameId, selectedStatus = '') {
 function renderGameCard(game, selectedStatus = '') {
   const platformText = getPlatformNames(game.platforms || []);
   const detail = [game.franchise, game.release_year, platformText].filter(Boolean).join(' · ');
+  const cover = typeof game.cover_url === 'string' && /^https:\/\/images\.igdb\.com\//.test(game.cover_url)
+    ? `<img class="profile-game-card__cover" src="${escapeHTML(game.cover_url)}" alt="Capa de ${escapeHTML(game.title)}" loading="lazy" />`
+    : `<span class="profile-game-card__cover-placeholder" aria-hidden="true">${escapeHTML(game.title.slice(0, 1))}</span>`;
   return `
     <article class="profile-game-card" data-game-id="${escapeHTML(game.id)}" data-franchise="${escapeHTML(game.franchise || '')}">
-      <div class="profile-game-card__info">
-        <h3>${escapeHTML(game.title)}</h3>
-        <p>${escapeHTML(detail)}</p>
+      <div class="profile-game-card__main">
+        ${cover}
+        <div class="profile-game-card__info">
+          <h3>${escapeHTML(game.title)}</h3>
+          <p>${escapeHTML(detail)}</p>
+        </div>
       </div>
       ${renderGameSignalButtons(game.id, selectedStatus)}
     </article>
@@ -550,8 +556,11 @@ function renderProfileSetup() {
             <label class="profile-search-label" for="profile-game-search">Buscar na seleção</label>
             <input class="profile-game-search" id="profile-game-search" type="search" placeholder="Nome ou franquia" autocomplete="off" />
             <div class="profile-igdb-tools">
-              <button class="profile-igdb-search" type="button">Buscar também no catálogo do IGDB</button>
-              <p class="profile-igdb-note">A busca é ampla; só os jogos que você adicionar entram no Atlas. Dados e capas: IGDB.</p>
+              <div class="profile-igdb-actions">
+                <button class="profile-igdb-search" type="button">Buscar também no catálogo do IGDB</button>
+                <button class="profile-igdb-covers" type="button">Preencher capas que faltam</button>
+              </div>
+              <p class="profile-igdb-note">A busca é ampla; só os jogos que você adicionar entram no Atlas. As capas encontradas são salvas no catálogo.</p>
               <p class="profile-igdb-feedback" role="status" aria-live="polite"></p>
               <div class="profile-igdb-results" aria-label="Resultados do IGDB" aria-live="polite"></div>
             </div>
@@ -607,6 +616,7 @@ function renderProfileSetup() {
   const list = view.querySelector('.profile-game-list');
   const search = view.querySelector('.profile-game-search');
   const igdbSearchButton = view.querySelector('.profile-igdb-search');
+  const igdbCoversButton = view.querySelector('.profile-igdb-covers');
   const igdbFeedback = view.querySelector('.profile-igdb-feedback');
   const igdbResults = view.querySelector('.profile-igdb-results');
   const filters = [...view.querySelectorAll('.profile-game-filters button')];
@@ -685,6 +695,9 @@ function renderProfileSetup() {
   }
 
   function getFriendlyIGDBError(error) {
+    if (error.code === 'INVALID_ACTION') {
+      return 'Atualize a função igdb-catalog no Supabase para preencher capas. Veja SUPABASE_SETUP.md.';
+    }
     if (error.code === 'IGDB_NOT_CONFIGURED') {
       return 'Falta configurar IGDB_CLIENT_ID e IGDB_CLIENT_SECRET nos Secrets do Supabase. Veja SUPABASE_SETUP.md.';
     }
@@ -774,6 +787,35 @@ function renderProfileSetup() {
       setIGDBFeedback(getFriendlyIGDBError(error), 'error');
     } finally {
       igdbSearchButton.disabled = false;
+    }
+  });
+
+  igdbCoversButton.addEventListener('click', async () => {
+    if (igdbCoversButton.disabled) return;
+
+    igdbCoversButton.disabled = true;
+    igdbCoversButton.textContent = 'Buscando capas…';
+    setIGDBFeedback('Procurando capas correspondentes no IGDB. Isso pode levar alguns segundos.');
+    try {
+      const result = await window.AtlasBackend.backfillIGDBCovers();
+      games = await window.AtlasBackend.loadGameCatalog();
+      updateGames();
+
+      if (!result.scanned) {
+        setIGDBFeedback('Os jogos iniciais já têm capa ou não há capas pendentes.');
+      } else if (!result.updated) {
+        setIGDBFeedback(`Nenhuma capa foi salva: ${result.unmatched} ${result.unmatched === 1 ? 'jogo ficou' : 'jogos ficaram'} sem correspondência segura no IGDB.`);
+      } else {
+        const unmatchedMessage = result.unmatched
+          ? ` ${result.unmatched} ${result.unmatched === 1 ? 'jogo ficou' : 'jogos ficaram'} sem correspondência segura.`
+          : '';
+        setIGDBFeedback(`${result.updated} ${result.updated === 1 ? 'capa foi salva' : 'capas foram salvas'} no catálogo.${unmatchedMessage}`);
+      }
+    } catch (error) {
+      setIGDBFeedback(getFriendlyIGDBError(error), 'error');
+    } finally {
+      igdbCoversButton.disabled = false;
+      igdbCoversButton.textContent = 'Preencher capas que faltam';
     }
   });
 

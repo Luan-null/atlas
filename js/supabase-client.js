@@ -105,6 +105,10 @@
     return invokeIGDBCatalog({ action: 'import', gameId });
   }
 
+  async function backfillIGDBCovers() {
+    return invokeIGDBCatalog({ action: 'backfill-covers' });
+  }
+
   window.AtlasBackend = Object.freeze({
     client,
     loadSave,
@@ -112,5 +116,6 @@
     loadGameCatalog,
     searchIGDB,
     importIGDBGame,
+    backfillIGDBCovers,
   });
 })();

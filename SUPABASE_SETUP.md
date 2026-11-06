@@ -29,9 +29,13 @@ O catálogo inicial inclui jogos citados na conversa e algumas opções para exp
 
 A tela de perfil pesquisa no catálogo do IGDB e só importa um jogo para `atlas_games` quando você clica em **Adicionar ao Atlas**. Os dados escolhidos ficam armazenados no catálogo compartilhado; a chave privada da Twitch e a chave administrativa do Supabase ficam no servidor.
 
+Na mesma tela, **Preencher capas que faltam** procura capas dos jogos iniciais sem imagem e grava os endereços encontrados na coluna `cover_url` do catálogo. A correspondência ignora diferenças como acentos, artigos e a palavra “Version”; também reconhece o nome usado pelo IGDB para Minecraft. O ano deve coincidir ou diferir por no máximo um ano, sem ambiguidade. Jogos sem correspondência segura continuam sem capa.
+
+Para remover os avisos falsos do `index.ts` no VS Code, instale a extensão recomendada **Deno** quando o VS Code solicitar. A configuração deste repositório ativa o suporte Deno somente em `supabase/functions`, mantendo o verificador JavaScript/TypeScript normal no restante do site. Depois da instalação, recarregue a janela do VS Code.
+
 ### Credenciais do IGDB
 
-1. No [Twitch Developer Portal](https://dev.twitch.tv/console/apps), crie um aplicativo do tipo **Confidential**. Para o campo de redirecionamento, a documentação do IGDB orienta usar `localhost`; esta integração usa o fluxo de credenciais de aplicativo e não faz login Twitch de usuários.
+1. No [Twitch Developer Portal](https://dev.twitch.tv/console/apps), crie um aplicativo do tipo **Confidential** e selecione **Website Integration** como categoria. No campo de redirecionamento OAuth, use `https://luan-null.github.io/atlas/` e clique em **Adicionar**. O console atual exige um endereço HTTPS; esta integração usa credenciais de aplicativo, então o endereço não participa do fluxo de autenticação do IGDB.
 2. Copie o **Client ID** e gere um **Client Secret**.
 3. No painel do Supabase, abra **Edge Functions → Secrets** e adicione estes dois nomes e valores:
    - `IGDB_CLIENT_ID` — Client ID do aplicativo Twitch.
@@ -50,6 +54,8 @@ supabase functions deploy igdb-catalog
 
 O `verify_jwt` permanece ativado. A função também usa o wrapper `@supabase/server` com `auth: 'user'`, que valida a sessão, administra o CORS e fornece acesso administrativo apenas dentro da função. A chave privilegiada nunca vai para o navegador. A configuração está em `supabase/config.toml`.
 
-Depois de executar novamente `supabase/seed_games.sql`, configurar os dois secrets e publicar a função, entre em **Seu save**, digite um título no campo de busca e clique em **Buscar também no catálogo do IGDB**. Os resultados são limitados a dez por busca; escolha quais deseja adicionar.
+Se preferir publicar pelo painel, abra **Edge Functions → Deploy a new function → Via Editor**, use o nome `igdb-catalog`, substitua o código de exemplo pelo conteúdo completo de `supabase/functions/igdb-catalog/index.ts` e publique. Mantenha a verificação JWT ativada.
+
+Depois de executar novamente `supabase/seed_games.sql`, configurar os dois secrets e publicar a função, entre em **Seu save**, digite um título no campo de busca e clique em **Buscar também no catálogo do IGDB**. Os resultados são limitados a dez por busca; escolha quais deseja adicionar. Para preencher as capas dos jogos que já estavam no catálogo, use **Preencher capas que faltam**.
 
 O uso atual é para o protótipo pessoal. A documentação do IGDB informa que aplicações comerciais precisam entrar em contato para uma parceria comercial.
