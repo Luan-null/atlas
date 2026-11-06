@@ -894,6 +894,51 @@ button { color: inherit; }
   scrollbar-width: thin;
 }
 
+.profile-game-load-more-wrap {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 18px 0 24px;
+}
+
+.profile-game-load-more {
+  display: inline-flex;
+  min-width: 210px;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 9px 18px;
+  border: 1px solid rgba(213, 173, 114, .42);
+  border-radius: 999px;
+  color: var(--text);
+  background: rgba(49, 31, 19, .56);
+  font: inherit;
+  font-size: .68rem;
+  letter-spacing: .11em;
+  cursor: pointer;
+  transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+
+.profile-game-load-more:hover {
+  border-color: var(--accent);
+  color: #fff0d2;
+  background: rgba(76, 49, 28, .72);
+}
+
+.profile-game-load-more:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.profile-game-load-more-wrap p {
+  margin: 0;
+  color: var(--muted);
+  font-size: .66rem;
+}
+
 .profile-game-card {
   display: grid;
   min-width: 0;

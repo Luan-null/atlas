@@ -520,6 +520,28 @@ function renderGameCard(game, selectedStatus = '') {
   `;
 }
 
+function interleaveCatalogByFranchise(catalog) {
+  const groups = new Map();
+  for (const game of catalog) {
+    const key = game.franchise || game.title;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(game);
+  }
+
+  const mixed = [];
+  while (mixed.length < catalog.length) {
+    let added = false;
+    for (const franchiseGames of groups.values()) {
+      const nextGame = franchiseGames.shift();
+      if (!nextGame) continue;
+      mixed.push(nextGame);
+      added = true;
+    }
+    if (!added) break;
+  }
+  return mixed;
+}
+
 async function getSignedInSave() {
   const backend = window.AtlasBackend;
   if (!backend?.client) throw new Error('NO_BACKEND');
@@ -654,11 +676,13 @@ function renderProfileSetup() {
   const stepActions = view.querySelector('.profile-step-actions');
   const submitButton = view.querySelector('.profile-submit');
   const signoutButton = view.querySelector('.profile-signout');
+  const gamesPerPage = 24;
   submitButton.disabled = true;
   let games = [];
   let ratings = new Map();
   let loadedProgress = null;
   let loading = true;
+  let visibleGamesLimit = gamesPerPage;
 
   function syncEmulationSettings() {
     emulationSettings.hidden = !emulationContextInput.checked;
@@ -678,11 +702,15 @@ function renderProfileSetup() {
       const matchesSearch = !query || `${game.title} ${game.franchise || ''}`.toLocaleLowerCase('pt-BR').includes(query);
       return matchesSearch;
     });
+    const gamesToRender = query ? visibleGames : visibleGames.slice(0, visibleGamesLimit);
+    const showMoreButton = !query && visibleGames.length > gamesToRender.length
+      ? `<div class="profile-game-load-more-wrap"><button class="profile-game-load-more" type="button">VER MAIS JOGOS <span aria-hidden="true">↓</span></button><p>Mostrando ${gamesToRender.length} de ${visibleGames.length}</p></div>`
+      : '';
 
     list.innerHTML = loading
       ? '<p class="profile-feedback">Carregando o catálogo inicial…</p>'
       : visibleGames.length
-        ? visibleGames.map((game) => renderGameCard(game, ratings.get(game.id))).join('')
+        ? `${gamesToRender.map((game) => renderGameCard(game, ratings.get(game.id))).join('')}${showMoreButton}`
         : '<p class="profile-feedback">Nenhum jogo encontrado. Tente outro nome.</p>';
     updateCount();
   }
@@ -735,7 +763,7 @@ function renderProfileSetup() {
       }
       syncEmulationSettings();
 
-      games = await session.backend.loadGameCatalog();
+      games = interleaveCatalogByFranchise(await session.backend.loadGameCatalog());
       loading = false;
       if (!games.length) throw new Error('EMPTY_CATALOG');
       updateGames();
@@ -768,9 +796,17 @@ function renderProfileSetup() {
   });
   async function fillMissingCovers(backend) {
     try {
-      const result = await backend.backfillIGDBCovers();
-      if (result?.updated) {
-        games = await backend.loadGameCatalog();
+      let offset = 0;
+      let coversChanged = false;
+      while (true) {
+        const result = await backend.backfillIGDBCovers(offset);
+        if (!result) break;
+        if (result.updated) coversChanged = true;
+        if (!result.hasMore || result.nextOffset <= offset) break;
+        offset = result.nextOffset;
+      }
+      if (coversChanged) {
+        games = interleaveCatalogByFranchise(await backend.loadGameCatalog());
         updateGames();
       }
     } catch (error) {
@@ -798,6 +834,12 @@ function renderProfileSetup() {
   });
 
   list.addEventListener('click', (event) => {
+    if (event.target.closest('.profile-game-load-more')) {
+      visibleGamesLimit += gamesPerPage;
+      updateGames();
+      return;
+    }
+
     const button = event.target.closest('.profile-signal');
     if (!button) return;
     const gameId = button.closest('.profile-game-signals').dataset.gameId;

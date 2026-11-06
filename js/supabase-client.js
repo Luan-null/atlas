@@ -97,8 +97,8 @@
     return data;
   }
 
-  async function backfillIGDBCovers() {
-    return invokeIGDBCatalog({ action: 'backfill-covers' });
+  async function backfillIGDBCovers(offset = 0) {
+    return invokeIGDBCatalog({ action: 'backfill-covers', offset });
   }
 
   window.AtlasBackend = Object.freeze({

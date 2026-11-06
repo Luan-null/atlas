@@ -6,6 +6,9 @@ const DIRECT_IGDB_COVER_IDS: Record<string, number> = {
   // IGDB's canonical Minecraft: Java Edition entry. Using its ID avoids
   // title-search ambiguity and keeps this seed game's cover deterministic.
   minecraft: 121,
+  // Twilight Princess has same-title releases across several platforms;
+  // pin the original IGDB entry so the cover lookup doesn't become ambiguous.
+  'zelda-twilight-princess': 1036,
 }
 
 class HttpError extends Error {
@@ -138,15 +141,15 @@ async function requestIGDB(query: string, clientId: string, accessToken: string)
   return await response.json() as Array<Record<string, any>>
 }
 
-async function backfillMissingCovers(ctx: any, clientId: string, accessToken: string) {
+async function backfillMissingCovers(ctx: any, clientId: string, accessToken: string, offset = 0) {
   const { data: games, error } = await ctx.supabaseAdmin
     .from('atlas_games')
-    .select('id, title, release_year')
+    .select('id, title, release_year, cover_url')
     .eq('is_profile_selectable', true)
     .eq('source', 'atlas')
-    .is('cover_url', null)
     .order('sort_order', { ascending: true })
-    .limit(40)
+    .order('id', { ascending: true })
+    .range(offset, offset + 39)
 
   if (error) {
     console.error('Atlas catalog cover lookup failed:', error.code, error.message)
@@ -155,7 +158,9 @@ async function backfillMissingCovers(ctx: any, clientId: string, accessToken: st
 
   let updated = 0
   let unmatched = 0
-  for (const [index, game] of (games || []).entries()) {
+  const page = games || []
+  const missingGames = page.filter((game: Record<string, any>) => !game.cover_url)
+  for (const [index, game] of missingGames.entries()) {
     if (index > 0) await delay(300)
 
     const directIGDBId = DIRECT_IGDB_COVER_IDS[game.id]
@@ -198,9 +203,11 @@ async function backfillMissingCovers(ctx: any, clientId: string, accessToken: st
   }
 
   return {
-    scanned: games?.length || 0,
+    scanned: missingGames.length,
     updated,
     unmatched,
+    nextOffset: offset + page.length,
+    hasMore: page.length === 40,
   }
 }
 
@@ -230,9 +237,14 @@ export default {
         throw new HttpError(400, 'INVALID_ACTION', 'A ação solicitada não existe.')
       }
 
+      const offset = Number(payload.offset ?? 0)
+      if (!Number.isSafeInteger(offset) || offset < 0) {
+        throw new HttpError(400, 'INVALID_OFFSET', 'O lote solicitado está inválido.')
+      }
+
       const { clientId, clientSecret } = await getIGDBCredentials()
       const accessToken = await getAppAccessToken(clientId, clientSecret)
-      return jsonResponse(await backfillMissingCovers(ctx, clientId, accessToken))
+      return jsonResponse(await backfillMissingCovers(ctx, clientId, accessToken, offset))
     } catch (error) {
       if (error instanceof HttpError) {
         return jsonResponse({ error: error.message, code: error.code }, error.status)
