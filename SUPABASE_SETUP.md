@@ -9,7 +9,7 @@ O site usa o Supabase Auth para contas e a tabela `public.atlas_saves` para mant
 3. Adicione essa mesma URL à lista de redirecionamentos permitidos. Para testar localmente, adicione também o endereço exato que o Live Server mostrar, por exemplo `http://127.0.0.1:5500/**`.
 4. Confirme que o provedor de e-mail está habilitado e que novos cadastros são permitidos.
 5. Abra o **SQL Editor**, copie o conteúdo de `supabase/schema.sql` e execute.
-6. Ainda no **SQL Editor**, execute `supabase/seed_games.sql` para criar o catálogo inicial e carregar os primeiros jogos. Se você já executou uma versão anterior desse arquivo, execute novamente: ele adiciona as colunas de capas e de progressão de séries, além dos jogos que faltam para a cronologia de Zelda, sem apagar os jogos existentes.
+6. Ainda no **SQL Editor**, execute `supabase/seed_games.sql` para criar o catálogo inicial e carregar os primeiros jogos. Se você já executou uma versão anterior desse arquivo, execute novamente: ele atualiza os dados curados, oculta da seleção os títulos substituídos e preserva os registros antigos no banco.
 
 Com a confirmação de e-mail habilitada, o cadastro envia um link para a pessoa confirmar o endereço. O link retorna à URL principal do Atlas. A configuração do redirecionamento precisa incluir a URL publicada e o endereço local usado no teste.
 
@@ -23,13 +23,13 @@ Com a confirmação de e-mail habilitada, o cadastro envia um link para a pessoa
 - As políticas permitem que uma pessoa leia, crie e atualize apenas o registro cujo `user_id` corresponde à sessão autenticada. A chave publicável não concede acesso a saves por conta própria.
 - Nunca coloque uma chave `secret` ou `service_role` no site. O projeto usa apenas a chave publicável em `js/supabase-config.js`.
 
-O seed atual reúne 124 jogos para treinar as primeiras sugestões, incluindo títulos citados na conversa e opções de estilos diferentes. A recomendação considera afinidades, jogos que a pessoa não curtiu, formas de acesso, limite estimado de emulação, permissão para rejogar e pré-requisitos de cronologia. Ela não usa aprendizado de máquina; os sinais da conta alimentam regras explícitas e auditáveis.
+O seed atual reúne 124 jogos selecionáveis para treinar as primeiras sugestões, incluindo títulos citados na conversa e opções de estilos diferentes. Um destino recomendável deve oferecer uma história ou jornada de progressão estruturada até um objetivo final; jogos sem esse arco podem permanecer como referência de perfil, mas não entram como sugestões. A recomendação considera afinidades, jogos que a pessoa não curtiu, formas de acesso, limite estimado de emulação, permissão para rejogar e pré-requisitos de cronologia. Ela não usa aprendizado de máquina; os sinais da conta alimentam regras explícitas e auditáveis.
 
 ## Catálogo de jogos e capas
 
 A tela de seleção lê os jogos de `public.atlas_games`; a pessoa escolhe entre os títulos já disponíveis no banco durante a configuração inicial ou quando decide editar suas seleções. Ela começa mostrando 24 títulos e acrescenta mais 24 com **Ver mais jogos**. A busca consulta o catálogo inteiro. Essa tela não aparece no mapa. Os dados dos novos jogos entram por curadoria e atualização do seed, não pela interface de quem está jogando. O seed inclui a cronologia oficial e os pré-requisitos de Zelda. Depois que a pessoa escolhe um jogo de uma ramificação, o Atlas mantém aquele caminho nas próximas sugestões. As capas são buscadas pelo processo do IGDB em lotes de até 40 jogos.
 
-Ao abrir a etapa de jogos, o Atlas tenta completar automaticamente as capas ausentes dos jogos iniciais e grava as URLs na coluna `cover_url`. A correspondência usa o nome e o ano; para Minecraft, consulta diretamente a entrada oficial `Minecraft: Java Edition` do IGDB (ID 121). Jogos sem correspondência segura continuam sem capa até serem corrigidos no catálogo.
+Ao abrir a etapa de jogos, o Atlas tenta completar automaticamente as capas ausentes dos jogos iniciais e grava as URLs na coluna `cover_url`. A correspondência usa o nome e o ano; para Minecraft, consulta diretamente a entrada oficial `Minecraft: Java Edition` do IGDB (ID 121). Alguns títulos têm busca curada para lidar com nomes alternativos e anos de lançamento regionais, incluindo os jogos sem capa relatados nesta revisão.
 
 Publicar o site no GitHub Pages atualiza o front-end, mas não publica a Edge Function do Supabase. Para completar capas automaticamente, publique também a versão atual de `igdb-catalog`; as URLs encontradas ficam no banco e aparecem para todas as contas.
 

@@ -7,7 +7,7 @@ let entrySession = null;
 
 function getRoute() {
   const route = window.location.hash.slice(1);
-  return ['login', 'profile-setup', 'first-game'].includes(route) ? route : 'home';
+  return ['login', 'profile-setup', 'first-game', 'journey'].includes(route) ? route : 'home';
 }
 
 function escapeHTML(value) {
@@ -61,6 +61,8 @@ function renderRoute() {
     cleanupCurrentScreen = renderProfileSetup();
   } else if (getRoute() === 'first-game') {
     cleanupCurrentScreen = renderFirstGame();
+  } else if (getRoute() === 'journey') {
+    cleanupCurrentScreen = renderJourney();
   } else if (entrySession) {
     view.replaceChildren(entrySession.element);
     entrySession.resume();
@@ -365,7 +367,11 @@ function renderLogin() {
     try {
       const save = await backend.loadSave(user.id);
       setFeedback('Conta conectada. Seu save está pronto para receber o progresso do Atlas.', 'success');
-      const nextRoute = save.progress?.profile?.setupComplete ? 'first-game' : 'profile-setup';
+      const progress = save.progress || {};
+      const hasJourney = Boolean(progress.currentMilestone?.gameId || progress.completedMilestones?.length);
+      const nextRoute = progress.profile?.setupComplete
+        ? hasJourney ? 'journey' : 'first-game'
+        : 'profile-setup';
       window.setTimeout(() => navigateTo(nextRoute), 550);
     } catch (error) {
       setFeedback(getSaveErrorMessage(error), 'error');
@@ -1006,8 +1012,8 @@ function renderFirstGame() {
       </div>
       <div class="first-game-actions">
         <p class="first-game-actions__eyebrow">UM CAMINHO PARA COMEÇAR</p>
-        <button class="button primary first-game-choose" type="button"${isChosen ? ' disabled' : ''}>
-          <span>${isChosen ? 'PONTO DE PARTIDA DEFINIDO' : 'COMEÇAR POR ESTE JOGO'}</span><span aria-hidden="true">→</span>
+        <button class="button primary first-game-choose" type="button">
+          <span>${isChosen ? 'ABRIR A JORNADA' : 'COMEÇAR POR ESTE JOGO'}</span><span aria-hidden="true">→</span>
         </button>
         <button class="first-game-another" type="button">Ver outra sugestão</button>
         <a class="profile-secondary-link" href="#profile-setup">Editar minhas seleções</a>
@@ -1041,6 +1047,10 @@ function renderFirstGame() {
     const anotherButton = card.querySelector('.first-game-another');
 
     chooseButton.addEventListener('click', async () => {
+      if (isChosen) {
+        navigateTo('journey');
+        return;
+      }
       if (saving) return;
       saving = true;
       chooseButton.disabled = true;
@@ -1062,7 +1072,7 @@ function renderFirstGame() {
         };
         await session.backend.saveProgress(newProgress);
         loadedProgress = newProgress;
-        renderSuggestion(suggestionState);
+        navigateTo('journey');
       } catch {
         chooseButton.disabled = false;
         chooseButton.querySelector('span:first-child').textContent = 'TENTAR NOVAMENTE';
@@ -1192,6 +1202,189 @@ function renderFirstGame() {
   });
 
   loadRecommendation();
+  return () => {};
+}
+
+function renderJourney() {
+  view.innerHTML = `
+    <section class="profile-screen journey-screen" aria-labelledby="journey-title">
+      <img class="profile-screen__backdrop" src="assets/img/atlas-title-scene.png" alt="" />
+      <div class="journey-shell">
+        <header class="profile-heading journey-heading">
+          <div>
+            <p class="login-eyebrow">SUA JORNADA</p>
+            <h1 id="journey-title">Seu caminho começa aqui</h1>
+            <p class="journey-intro">Cada experiência deixa um marco. O próximo território só aparece quando chegar a hora.</p>
+          </div>
+          <button class="profile-signout journey-signout" type="button">Sair da conta</button>
+        </header>
+        <div class="journey-scroll" aria-live="polite">
+          <p class="journey-feedback" role="status">Traçando sua jornada…</p>
+        </div>
+      </div>
+    </section>
+  `;
+
+  const scroll = view.querySelector('.journey-scroll');
+  const signoutButton = view.querySelector('.journey-signout');
+
+  function formatMilestoneDate(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' }).format(date);
+  }
+
+  function renderJourneyEntry(entry, game, kind) {
+    const statusLabels = {
+      completed: 'Concluído',
+      chosen: 'Seu ponto atual',
+      in_progress: 'Em andamento',
+      revisiting: 'Revisitando',
+      abandoned: 'Interrompido',
+    };
+    const status = entry.status || kind;
+    const title = game?.title || entry.title || 'Experiência registrada';
+    const metadata = [
+      game?.release_year,
+      getPlatformNames(game?.platforms || []),
+    ].filter(Boolean).join(' · ');
+    const cover = typeof game?.cover_url === 'string' && /^https:\/\/images\.igdb\.com\//.test(game.cover_url)
+      ? `<img class="journey-entry__cover" src="${escapeHTML(game.cover_url)}" alt="Capa de ${escapeHTML(title)}" loading="lazy" />`
+      : `<span class="journey-entry__cover journey-entry__cover--placeholder" aria-hidden="true">${escapeHTML(title.slice(0, 1))}</span>`;
+    const summary = game?.short_description || 'Um marco da sua experiência no Atlas.';
+    const franchise = game?.franchise
+      ? `<p class="journey-entry__franchise">${escapeHTML(game.franchise)}</p>`
+      : '';
+    const dateLabel = formatMilestoneDate(entry.completedAt || entry.completed_at || entry.chosenAt || entry.startedAt || entry.started_at);
+    const opened = kind === 'current' ? ' open' : '';
+
+    return `
+      <li class="journey-stop journey-stop--${kind}">
+        <span class="journey-stop__marker" aria-hidden="true">${kind === 'completed' ? '✓' : kind === 'current' ? '✦' : '·'}</span>
+        <details class="journey-entry${kind === 'current' ? ' journey-entry--current' : ''}"${opened}>
+          <summary>
+            <span class="journey-entry__state">${escapeHTML(statusLabels[status] || statusLabels[kind] || 'Marco da jornada')}</span>
+            <span class="journey-entry__title">${escapeHTML(title)}</span>
+            ${metadata ? `<span class="journey-entry__meta">${escapeHTML(metadata)}</span>` : ''}
+            <span class="journey-entry__toggle" aria-hidden="true"></span>
+          </summary>
+          <div class="journey-entry__body">
+            ${cover}
+            <div class="journey-entry__copy">
+              ${franchise}
+              <p>${escapeHTML(summary)}</p>
+              ${dateLabel ? `<span class="journey-entry__date">${kind === 'completed' ? 'Concluído em' : 'Registrado em'} ${escapeHTML(dateLabel)}</span>` : ''}
+            </div>
+          </div>
+        </details>
+      </li>
+    `;
+  }
+
+  async function loadJourney() {
+    try {
+      const session = await getSignedInSave();
+      if (!session) {
+        window.location.hash = 'login';
+        return;
+      }
+
+      const progress = session.save.progress || {};
+      if (!progress.profile?.setupComplete) {
+        window.location.hash = 'profile-setup';
+        return;
+      }
+      if (!progress.currentMilestone?.gameId && !progress.completedMilestones?.length) {
+        window.location.hash = 'first-game';
+        return;
+      }
+
+      const catalog = await session.backend.loadGameCatalog();
+      const gamesById = new Map(catalog.map((game) => [game.id, game]));
+      const completed = (Array.isArray(progress.completedMilestones) ? progress.completedMilestones : [])
+        .map((milestone) => typeof milestone === 'string' ? { gameId: milestone, status: 'completed' } : milestone)
+        .filter((milestone) => milestone && typeof milestone.gameId === 'string');
+      const completedIds = new Set(completed.map((milestone) => milestone.gameId));
+      const currentMilestone = progress.currentMilestone && typeof progress.currentMilestone.gameId === 'string'
+        ? progress.currentMilestone
+        : null;
+      let current = currentMilestone && !['completed', 'abandoned'].includes(currentMilestone.status)
+        ? currentMilestone
+        : null;
+
+      if (currentMilestone && ['completed', 'abandoned'].includes(currentMilestone.status) && !completedIds.has(currentMilestone.gameId)) {
+        completed.push({ ...currentMilestone, status: currentMilestone.status });
+      }
+
+      const start = `
+        <li class="journey-stop journey-stop--origin">
+          <span class="journey-stop__marker" aria-hidden="true">✧</span>
+          <div class="journey-origin">
+            <span>INÍCIO</span>
+            <p>Aqui começa sua jornada pelo universo dos jogos.</p>
+          </div>
+        </li>
+      `;
+      const past = completed.map((entry) => renderJourneyEntry(
+        entry,
+        gamesById.get(entry.gameId),
+        entry.status === 'abandoned' ? 'abandoned' : 'completed',
+      )).join('');
+      const active = current ? renderJourneyEntry(current, gamesById.get(current.gameId), 'current') : '';
+      const future = `
+        <li class="journey-stop journey-stop--future">
+          <span class="journey-stop__marker" aria-hidden="true">?</span>
+          <div class="journey-future">
+            <span>PRÓXIMO TERRITÓRIO</span>
+            <p>${current ? 'Ainda desconhecido.' : 'Será escolhido quando você estiver pronto para seguir.'}</p>
+            ${!current && completed.length ? '<a class="journey-future__action" href="#first-game">VER PRÓXIMA SUGESTÃO <span aria-hidden="true">→</span></a>' : ''}
+          </div>
+        </li>
+      `;
+      const heading = completed.length
+        ? 'Por onde você já passou'
+        : current ? 'Seu caminho começa aqui' : 'Sua jornada continua';
+      const intro = current
+        ? 'Este é o ponto atual da sua trilha. O que vem depois continua em aberto.'
+        : 'Seu caminho permanece registrado. O próximo destino aparece quando chegar a hora.';
+
+      view.querySelector('#journey-title').textContent = heading;
+      view.querySelector('.journey-intro').textContent = intro;
+      scroll.innerHTML = `
+        <ol class="journey-path" aria-label="Caminho percorrido na Jornada">
+          ${start}${past}${active}${future}
+        </ol>
+      `;
+
+      scroll.querySelectorAll('.journey-entry__cover[src]').forEach((coverImage) => {
+        coverImage.addEventListener('error', () => {
+          const fallback = document.createElement('span');
+          fallback.className = 'journey-entry__cover journey-entry__cover--placeholder';
+          fallback.setAttribute('aria-hidden', 'true');
+          fallback.textContent = coverImage.alt.replace(/^Capa de /, '').slice(0, 1);
+          coverImage.replaceWith(fallback);
+        }, { once: true });
+      });
+    } catch {
+      scroll.innerHTML = '<p class="journey-feedback" role="status">Não foi possível carregar sua jornada. Confira a conexão e tente novamente.</p>';
+    }
+  }
+
+  signoutButton.addEventListener('click', async () => {
+    const backend = window.AtlasBackend;
+    if (!backend?.client) return;
+    signoutButton.disabled = true;
+    try {
+      const { error } = await backend.client.auth.signOut();
+      if (error) throw error;
+      window.location.hash = 'home';
+    } catch {
+      signoutButton.disabled = false;
+    }
+  });
+
+  loadJourney();
   return () => {};
 }
 

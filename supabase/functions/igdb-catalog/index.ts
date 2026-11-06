@@ -11,6 +11,66 @@ const DIRECT_IGDB_COVER_IDS: Record<string, number> = {
   'zelda-twilight-princess': 1036,
 }
 
+type CuratedCoverLookup = {
+  searchTitle: string
+  acceptedTitles: string[]
+  releaseYears: number[]
+  allowSameYearVariants?: boolean
+}
+
+// These entries need a curated search because IGDB uses alternate names,
+// regional release years, or duplicate platform records for the same game.
+const CURATED_COVER_LOOKUPS: Record<string, CuratedCoverLookup> = {
+  'mario-super-mario-bros': {
+    searchTitle: 'Super Mario Bros.',
+    acceptedTitles: ['Super Mario Bros.'],
+    releaseYears: [1985],
+    allowSameYearVariants: true,
+  },
+  'mario-super-mario-64': {
+    searchTitle: 'Super Mario 64',
+    acceptedTitles: ['Super Mario 64'],
+    releaseYears: [1996],
+    allowSameYearVariants: true,
+  },
+  'paper-mario-thousand-year-door': {
+    searchTitle: 'Paper Mario: The Thousand-Year Door',
+    acceptedTitles: ['Paper Mario: The Thousand-Year Door'],
+    releaseYears: [2004],
+    allowSameYearVariants: true,
+  },
+  'phoenix-wright-ace-attorney': {
+    searchTitle: 'Phoenix Wright: Ace Attorney',
+    acceptedTitles: ['Phoenix Wright: Ace Attorney'],
+    // Japan's GBA release was 2001; the international release was 2005.
+    releaseYears: [2001, 2005],
+    allowSameYearVariants: true,
+  },
+  'walking-dead-season-one': {
+    searchTitle: 'The Walking Dead',
+    acceptedTitles: [
+      'The Walking Dead',
+      'The Walking Dead: The Complete First Season',
+      'The Walking Dead: The Game',
+      'The Walking Dead: Season One',
+    ],
+    releaseYears: [2012],
+    allowSameYearVariants: true,
+  },
+  okami: {
+    searchTitle: 'Okami',
+    acceptedTitles: ['Ōkami', 'Okami'],
+    releaseYears: [2006],
+    allowSameYearVariants: true,
+  },
+  'to-the-moon': {
+    searchTitle: 'To the Moon',
+    acceptedTitles: ['To the Moon'],
+    releaseYears: [2011],
+    allowSameYearVariants: true,
+  },
+}
+
 class HttpError extends Error {
   status: number
   code: string
@@ -55,20 +115,23 @@ function getIGDBCoverMatch(
   games: Array<Record<string, any>>,
   title: string,
   releaseYear: number | null,
+  lookup?: CuratedCoverLookup,
 ) {
+  const acceptedTitles = [title, ...(lookup?.acceptedTitles ?? [])]
   const exactMatches = games.filter((game) =>
     typeof game.name === 'string' &&
-    coverTitleMatches(game.name, title) &&
+    acceptedTitles.some((acceptedTitle) => coverTitleMatches(game.name, acceptedTitle)) &&
     typeof game.cover?.image_id === 'string'
   )
 
   if (releaseYear !== null) {
-    const sameYear = exactMatches.filter((game) =>
-      Number.isFinite(game.first_release_date) &&
-      new Date(game.first_release_date * 1000).getUTCFullYear() === releaseYear
-    )
+    const expectedYears = lookup?.releaseYears ?? [releaseYear]
+    const sameYear = exactMatches.filter((game) => {
+      if (!Number.isFinite(game.first_release_date)) return false
+      return expectedYears.includes(new Date(game.first_release_date * 1000).getUTCFullYear())
+    })
     if (sameYear.length === 1) return sameYear[0]
-    if (sameYear.length > 1) return null
+    if (sameYear.length > 1) return lookup?.allowSameYearVariants ? sameYear[0] : null
 
     const closeYearMatches = exactMatches.flatMap((game) => {
       if (!Number.isFinite(game.first_release_date)) return []
@@ -164,24 +227,37 @@ async function backfillMissingCovers(ctx: any, clientId: string, accessToken: st
     if (index > 0) await delay(300)
 
     const directIGDBId = DIRECT_IGDB_COVER_IDS[game.id]
-    let matches: Array<Record<string, any>>
+    const coverLookup = CURATED_COVER_LOOKUPS[game.id]
+    let match: Record<string, any> | null = null
     if (directIGDBId) {
-      matches = await requestIGDB(
+      const matches = await requestIGDB(
         `fields id,name,first_release_date,cover.image_id; where id = ${directIGDBId}; limit 1;`,
         clientId,
         accessToken,
       )
+      match = matches.find((candidate) => typeof candidate.cover?.image_id === 'string') ?? null
     } else {
-      const safeTitle = String(game.title || '').replaceAll('\\', '\\\\').replaceAll('"', '\\"')
-      matches = await requestIGDB(
-        `search "${safeTitle}"; fields id,name,first_release_date,cover.image_id; limit 10;`,
-        clientId,
-        accessToken,
-      )
+      const safeTitle = String(coverLookup?.searchTitle || game.title || '')
+        .replaceAll('\\', '\\\\')
+        .replaceAll('"', '\\"')
+      if (coverLookup) {
+        const exactMatches = await requestIGDB(
+          `fields id,name,first_release_date,cover.image_id; where name = "${safeTitle}"; limit 20;`,
+          clientId,
+          accessToken,
+        )
+        match = getIGDBCoverMatch(exactMatches, game.title, game.release_year ?? null, coverLookup)
+      }
+
+      if (!match) {
+        const matches = await requestIGDB(
+          `search "${safeTitle}"; fields id,name,first_release_date,cover.image_id; limit 20;`,
+          clientId,
+          accessToken,
+        )
+        match = getIGDBCoverMatch(matches, game.title, game.release_year ?? null, coverLookup)
+      }
     }
-    const match = directIGDBId
-      ? matches.find((candidate) => typeof candidate.cover?.image_id === 'string') ?? null
-      : getIGDBCoverMatch(matches, game.title, game.release_year ?? null)
     if (!match) {
       unmatched += 1
       continue
