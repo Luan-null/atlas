@@ -29,7 +29,9 @@ O catálogo inicial inclui jogos citados na conversa e algumas opções para exp
 
 A tela de perfil pesquisa no catálogo do IGDB e só importa um jogo para `atlas_games` quando você clica em **Adicionar ao Atlas**. Os dados escolhidos ficam armazenados no catálogo compartilhado; a chave privada da Twitch e a chave administrativa do Supabase ficam no servidor.
 
-Na mesma tela, **Preencher capas que faltam** procura capas dos jogos iniciais sem imagem e grava os endereços encontrados na coluna `cover_url` do catálogo. A correspondência ignora diferenças como acentos, artigos e a palavra “Version”; também reconhece o nome usado pelo IGDB para Minecraft. O ano deve coincidir ou diferir por no máximo um ano, sem ambiguidade. Jogos sem correspondência segura continuam sem capa.
+Ao abrir a etapa de jogos do perfil, o Atlas carrega em segundo plano as capas que faltam nos jogos iniciais e salva os endereços encontrados na coluna `cover_url` do catálogo. **Tentar capas ausentes** permite repetir a busca manualmente. A correspondência ignora diferenças como acentos, artigos e a palavra “Version”; para Minecraft, consulta diretamente a entrada oficial `Minecraft: Java Edition` do IGDB (ID 121), evitando resultados ambíguos. Nos outros jogos, o ano deve coincidir ou diferir por no máximo um ano, sem ambiguidade. Jogos sem correspondência segura continuam sem capa.
+
+Publicar o site no GitHub Pages atualiza o front-end, mas não publica nem executa a Edge Function do Supabase. Para carregar as capas automaticamente, publique também a versão atual de `igdb-catalog`. Depois da primeira busca, as URLs ficam no catálogo do banco e aparecem também para outras contas.
 
 Para remover os avisos falsos do `index.ts` no VS Code, instale a extensão recomendada **Deno** quando o VS Code solicitar. A configuração deste repositório ativa o suporte Deno somente em `supabase/functions`, mantendo o verificador JavaScript/TypeScript normal no restante do site. Depois da instalação, recarregue a janela do VS Code.
 
@@ -56,6 +58,6 @@ O `verify_jwt` permanece ativado. A função também usa o wrapper `@supabase/se
 
 Se preferir publicar pelo painel, abra **Edge Functions → Deploy a new function → Via Editor**, use o nome `igdb-catalog`, substitua o código de exemplo pelo conteúdo completo de `supabase/functions/igdb-catalog/index.ts` e publique. Mantenha a verificação JWT ativada.
 
-Depois de executar novamente `supabase/seed_games.sql`, configurar os dois secrets e publicar a função, entre em **Seu save**, digite um título no campo de busca e clique em **Buscar também no catálogo do IGDB**. Os resultados são limitados a dez por busca; escolha quais deseja adicionar. Para preencher as capas dos jogos que já estavam no catálogo, use **Preencher capas que faltam**.
+Depois de executar novamente `supabase/seed_games.sql`, configurar os dois secrets e publicar a função, entre em **Seu save**, digite um título no campo de busca e clique em **Buscar também no catálogo do IGDB**. Os resultados são limitados a dez por busca; escolha quais deseja adicionar. As capas ausentes dos jogos iniciais são carregadas quando a etapa de jogos do perfil é aberta.
 
 O uso atual é para o protótipo pessoal. A documentação do IGDB informa que aplicações comerciais precisam entrar em contato para uma parceria comercial.

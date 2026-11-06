@@ -536,62 +536,36 @@ function renderProfileSetup() {
       <div class="profile-shell">
         <header class="profile-heading">
           <div>
-            <p class="login-eyebrow">PONTO DE PARTIDA</p>
-            <h1 id="profile-setup-title">Vamos preparar sua primeira jornada</h1>
-            <p>Conte um pouco sobre os jogos que fazem parte da sua história. Rejogar também vale.</p>
+            <div class="profile-heading__eyebrow">
+              <button class="profile-step-back" type="button" hidden>← Preferências</button>
+              <p class="login-eyebrow">PONTO DE PARTIDA</p>
+            </div>
+            <h1 id="profile-setup-title">Onde começa sua jornada?</h1>
+            <p>Primeiro, vamos ajustar suas formas de jogar.</p>
           </div>
           <button class="profile-signout" type="button">Sair da conta</button>
         </header>
 
         <form class="profile-setup-layout">
-          <section class="profile-panel profile-games-panel" aria-labelledby="profile-games-title">
-            <div class="profile-panel__heading">
-              <div>
-                <h2 id="profile-games-title">Jogos que você conhece</h2>
-                <p>Marque a experiência mais forte que combina com cada jogo. “Gostei” e “Favorito” também contam como joguei.</p>
-              </div>
-              <span class="profile-game-count" aria-live="polite"></span>
-            </div>
-
-            <label class="profile-search-label" for="profile-game-search">Buscar na seleção</label>
-            <input class="profile-game-search" id="profile-game-search" type="search" placeholder="Nome ou franquia" autocomplete="off" />
-            <div class="profile-igdb-tools">
-              <div class="profile-igdb-actions">
-                <button class="profile-igdb-search" type="button">Buscar também no catálogo do IGDB</button>
-                <button class="profile-igdb-covers" type="button">Preencher capas que faltam</button>
-              </div>
-              <p class="profile-igdb-note">A busca é ampla; só os jogos que você adicionar entram no Atlas. As capas encontradas são salvas no catálogo.</p>
-              <p class="profile-igdb-feedback" role="status" aria-live="polite"></p>
-              <div class="profile-igdb-results" aria-label="Resultados do IGDB" aria-live="polite"></div>
-            </div>
-            <div class="profile-game-filters" role="group" aria-label="Filtrar jogos">
-              <button type="button" class="is-active" data-filter="all" aria-pressed="true">Todos</button>
-              <button type="button" data-filter="pokemon" aria-pressed="false">Pokémon</button>
-              <button type="button" data-filter="zelda" aria-pressed="false">Zelda</button>
-              <button type="button" data-filter="other" aria-pressed="false">Outros</button>
-            </div>
-            <div class="profile-game-list" aria-label="Catálogo inicial" aria-live="polite">
-              <p class="profile-feedback">Carregando o catálogo inicial…</p>
-            </div>
-          </section>
-
-          <aside class="profile-panel profile-preferences" aria-labelledby="profile-access-title">
-            <p class="login-eyebrow">PREFERÊNCIAS</p>
+          <section class="profile-panel profile-preferences profile-step" data-profile-step="preferences" aria-labelledby="profile-access-title">
+            <p class="login-eyebrow">PREFERÊNCIAS · ETAPA 1 DE 2</p>
             <h2 id="profile-access-title">Onde você consegue jogar?</h2>
             <p class="profile-panel__copy">Isso ajuda a sugerir jogos que cabem no seu acesso atual.</p>
 
-            <label class="profile-choice">
-              <input type="checkbox" name="playContext" value="pc-emulation" checked />
-              <span><strong>PC com emulação</strong><small>Para jogos de consoles e portáteis</small></span>
-            </label>
-            <label class="profile-choice">
-              <input type="checkbox" name="playContext" value="pc" />
-              <span><strong>Jogos de PC</strong><small>Jogos disponíveis para computador</small></span>
-            </label>
-            <label class="profile-choice">
-              <input type="checkbox" name="playContext" value="android" checked />
-              <span><strong>Android</strong><small>Jogos leves para celular</small></span>
-            </label>
+            <div class="profile-preference-options">
+              <label class="profile-choice">
+                <input type="checkbox" name="playContext" value="pc-emulation" checked />
+                <span><strong>PC com emulação</strong><small>Para jogos de consoles e portáteis</small></span>
+              </label>
+              <label class="profile-choice">
+                <input type="checkbox" name="playContext" value="pc" />
+                <span><strong>Jogos de PC</strong><small>Jogos disponíveis para computador</small></span>
+              </label>
+              <label class="profile-choice">
+                <input type="checkbox" name="playContext" value="android" checked />
+                <span><strong>Android</strong><small>Jogos leves para celular</small></span>
+              </label>
+            </div>
 
             <div class="profile-replay-setting">
               <label class="profile-choice">
@@ -600,12 +574,40 @@ function renderProfileSetup() {
               </label>
             </div>
 
-            <p class="profile-feedback" role="status" aria-live="polite"></p>
-            <button class="button primary profile-submit" type="submit">
-              <span>ME MOSTRE O PRIMEIRO JOGO</span><span aria-hidden="true">→</span>
+            <p class="profile-feedback profile-preferences-feedback" role="status" aria-live="polite"></p>
+            <button class="button primary profile-step-continue" type="button">
+              <span>CONTINUAR PARA OS JOGOS</span><span aria-hidden="true">→</span>
             </button>
             <p class="profile-privacy-note">Você poderá mudar essas respostas depois.</p>
-          </aside>
+          </section>
+
+          <section class="profile-games-panel profile-step" data-profile-step="games" aria-labelledby="profile-setup-title" hidden>
+            <div class="profile-games-toolbar">
+              <div class="profile-search-control">
+                <label class="profile-search-label" for="profile-game-search">Buscar jogos</label>
+                <input class="profile-game-search" id="profile-game-search" type="search" placeholder="Nome ou franquia" autocomplete="off" />
+              </div>
+              <div class="profile-igdb-actions">
+                <button class="profile-igdb-search" type="button">Adicionar jogo do IGDB</button>
+                <button class="profile-igdb-covers" type="button">Tentar capas ausentes</button>
+              </div>
+              <span class="profile-game-count" aria-live="polite"></span>
+            </div>
+            <div class="profile-igdb-tools">
+              <p class="profile-igdb-feedback" role="status" aria-live="polite"></p>
+              <div class="profile-igdb-results" aria-label="Resultados do IGDB" aria-live="polite"></div>
+            </div>
+            <div class="profile-game-list" aria-label="Catálogo inicial" aria-live="polite">
+              <p class="profile-feedback">Carregando o catálogo inicial…</p>
+            </div>
+
+            <p class="profile-feedback profile-setup-feedback" role="status" aria-live="polite"></p>
+          </section>
+          <div class="profile-step-actions" hidden>
+            <button class="button primary profile-submit" type="submit">
+              <span>MOSTRAR PRIMEIRO JOGO</span><span aria-hidden="true">→</span>
+            </button>
+          </div>
         </form>
       </div>
     </section>
@@ -619,16 +621,22 @@ function renderProfileSetup() {
   const igdbCoversButton = view.querySelector('.profile-igdb-covers');
   const igdbFeedback = view.querySelector('.profile-igdb-feedback');
   const igdbResults = view.querySelector('.profile-igdb-results');
-  const filters = [...view.querySelectorAll('.profile-game-filters button')];
   const count = view.querySelector('.profile-game-count');
-  const feedback = view.querySelector('.profile-preferences .profile-feedback');
+  const feedback = view.querySelector('.profile-setup-feedback');
+  const preferencesFeedback = view.querySelector('.profile-preferences-feedback');
+  const preferencesStep = view.querySelector('[data-profile-step="preferences"]');
+  const gamesStep = view.querySelector('[data-profile-step="games"]');
+  const profileTitle = view.querySelector('#profile-setup-title');
+  const profileIntro = view.querySelector('.profile-heading > div > p:last-child');
+  const continueButton = view.querySelector('.profile-step-continue');
+  const backButton = view.querySelector('.profile-step-back');
+  const stepActions = view.querySelector('.profile-step-actions');
   const submitButton = view.querySelector('.profile-submit');
   const signoutButton = view.querySelector('.profile-signout');
   submitButton.disabled = true;
   let games = [];
   let ratings = new Map();
   let loadedProgress = null;
-  let activeFilter = 'all';
   let loading = true;
   let igdbGames = [];
 
@@ -640,25 +648,40 @@ function renderProfileSetup() {
   function updateGames() {
     const query = search.value.trim().toLocaleLowerCase('pt-BR');
     const visibleGames = games.filter((game) => {
-      const matchesFilter = activeFilter === 'all' ||
-        (activeFilter === 'pokemon' && game.franchise === 'Pokémon') ||
-        (activeFilter === 'zelda' && game.franchise === 'The Legend of Zelda') ||
-        (activeFilter === 'other' && !['Pokémon', 'The Legend of Zelda'].includes(game.franchise));
       const matchesSearch = !query || `${game.title} ${game.franchise || ''}`.toLocaleLowerCase('pt-BR').includes(query);
-      return matchesFilter && matchesSearch;
+      return matchesSearch;
     });
 
     list.innerHTML = loading
       ? '<p class="profile-feedback">Carregando o catálogo inicial…</p>'
       : visibleGames.length
         ? visibleGames.map((game) => renderGameCard(game, ratings.get(game.id))).join('')
-        : '<p class="profile-feedback">Nenhum jogo encontrado. Tente outro nome ou filtro.</p>';
+        : '<p class="profile-feedback">Nenhum jogo encontrado. Tente outro nome.</p>';
     updateCount();
   }
 
   function setFeedback(message, tone = 'info') {
     feedback.textContent = message;
     feedback.dataset.tone = tone;
+  }
+
+  function setPreferencesFeedback(message, tone = 'info') {
+    preferencesFeedback.textContent = message;
+    preferencesFeedback.dataset.tone = tone;
+  }
+
+  function showProfileStep(step) {
+    const showPreferences = step === 'preferences';
+    screen.classList.toggle('profile-screen--games', !showPreferences);
+    preferencesStep.hidden = !showPreferences;
+    gamesStep.hidden = showPreferences;
+    backButton.hidden = showPreferences;
+    stepActions.hidden = showPreferences;
+    profileTitle.textContent = showPreferences ? 'Onde começa sua jornada?' : 'Agora, vamos aos jogos';
+    profileIntro.textContent = showPreferences
+      ? 'Primeiro, vamos ajustar suas formas de jogar.'
+      : 'Escolha os jogos que fazem parte da sua história. Rejogar também vale.';
+    if (!showPreferences) search.focus({ preventScroll: true });
   }
 
   function setIGDBFeedback(message, tone = 'info') {
@@ -737,6 +760,12 @@ function renderProfileSetup() {
       if (!games.length) throw new Error('EMPTY_CATALOG');
       updateGames();
       submitButton.disabled = false;
+
+      if (games.some((game) => game.source === 'atlas' && !game.cover_url)) {
+        void fillMissingCovers(true);
+      } else {
+        igdbCoversButton.hidden = true;
+      }
     } catch (error) {
       loading = false;
       list.innerHTML = '';
@@ -755,17 +784,10 @@ function renderProfileSetup() {
     }
   }
 
-  filters.forEach((button) => button.addEventListener('click', () => {
-    activeFilter = button.dataset.filter;
-    filters.forEach((filter) => {
-      const selected = filter === button;
-      filter.classList.toggle('is-active', selected);
-      filter.setAttribute('aria-pressed', String(selected));
-    });
-    updateGames();
-  }));
-
   search.addEventListener('input', updateGames);
+  search.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') event.preventDefault();
+  });
   igdbSearchButton.addEventListener('click', async () => {
     const query = search.value.trim();
     if (query.length < 2) {
@@ -790,33 +812,57 @@ function renderProfileSetup() {
     }
   });
 
-  igdbCoversButton.addEventListener('click', async () => {
+  async function fillMissingCovers(automatic = false) {
     if (igdbCoversButton.disabled) return;
 
     igdbCoversButton.disabled = true;
-    igdbCoversButton.textContent = 'Buscando capas…';
-    setIGDBFeedback('Procurando capas correspondentes no IGDB. Isso pode levar alguns segundos.');
+    igdbCoversButton.textContent = 'Carregando capas…';
+    setIGDBFeedback(automatic
+      ? 'As capas que faltam estão sendo carregadas no catálogo.'
+      : 'Procurando capas correspondentes no IGDB. Isso pode levar alguns segundos.');
     try {
       const result = await window.AtlasBackend.backfillIGDBCovers();
       games = await window.AtlasBackend.loadGameCatalog();
       updateGames();
+      igdbCoversButton.hidden = !games.some((game) => game.source === 'atlas' && !game.cover_url);
 
       if (!result.scanned) {
-        setIGDBFeedback('Os jogos iniciais já têm capa ou não há capas pendentes.');
+        setIGDBFeedback(automatic ? '' : 'Os jogos iniciais já têm capa ou não há capas pendentes.');
       } else if (!result.updated) {
-        setIGDBFeedback(`Nenhuma capa foi salva: ${result.unmatched} ${result.unmatched === 1 ? 'jogo ficou' : 'jogos ficaram'} sem correspondência segura no IGDB.`);
+        setIGDBFeedback(automatic
+          ? ''
+          : `Nenhuma capa foi salva: ${result.unmatched} ${result.unmatched === 1 ? 'jogo ficou' : 'jogos ficaram'} sem correspondência segura no IGDB.`);
       } else {
         const unmatchedMessage = result.unmatched
           ? ` ${result.unmatched} ${result.unmatched === 1 ? 'jogo ficou' : 'jogos ficaram'} sem correspondência segura.`
           : '';
-        setIGDBFeedback(`${result.updated} ${result.updated === 1 ? 'capa foi salva' : 'capas foram salvas'} no catálogo.${unmatchedMessage}`);
+        setIGDBFeedback(automatic
+          ? ''
+          : `${result.updated} ${result.updated === 1 ? 'capa foi salva' : 'capas foram salvas'} no catálogo.${unmatchedMessage}`);
       }
     } catch (error) {
       setIGDBFeedback(getFriendlyIGDBError(error), 'error');
     } finally {
       igdbCoversButton.disabled = false;
-      igdbCoversButton.textContent = 'Preencher capas que faltam';
+      igdbCoversButton.textContent = 'Tentar carregar capas ausentes';
     }
+  }
+
+  igdbCoversButton.addEventListener('click', () => fillMissingCovers());
+
+  continueButton.addEventListener('click', () => {
+    const playContexts = [...form.querySelectorAll('[name="playContext"]:checked')];
+    if (!playContexts.length) {
+      setPreferencesFeedback('Escolha pelo menos uma forma de jogar para continuar.', 'error');
+      return;
+    }
+    setPreferencesFeedback('');
+    showProfileStep('games');
+  });
+
+  backButton.addEventListener('click', () => {
+    showProfileStep('preferences');
+    continueButton.focus({ preventScroll: true });
   });
 
   igdbResults.addEventListener('click', async (event) => {
@@ -834,12 +880,6 @@ function renderProfileSetup() {
       if (existingIndex === -1) games.push(importedGame);
       else games[existingIndex] = importedGame;
 
-      activeFilter = 'all';
-      filters.forEach((filter) => {
-        const selected = filter.dataset.filter === 'all';
-        filter.classList.toggle('is-active', selected);
-        filter.setAttribute('aria-pressed', String(selected));
-      });
       search.value = importedGame.title;
       updateGames();
       renderIGDBResults();
@@ -877,6 +917,10 @@ function renderProfileSetup() {
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (!preferencesStep.hidden) {
+      continueButton.click();
+      return;
+    }
     const playContexts = [...form.querySelectorAll('[name="playContext"]:checked')].map((input) => input.value);
     if (!playContexts.length) {
       setFeedback('Escolha pelo menos uma forma de jogar para filtrar a primeira sugestão.', 'error');

@@ -17,6 +17,12 @@ const GAME_FIELDS = [
 
 let cachedAppToken: { value: string; expiresAt: number } | null = null
 
+const DIRECT_IGDB_COVER_IDS: Record<string, number> = {
+  // IGDB's canonical Minecraft: Java Edition entry. Using its ID avoids
+  // title-search ambiguity and keeps this seed game's cover deterministic.
+  minecraft: 121,
+}
+
 class HttpError extends Error {
   status: number
   code: string
@@ -252,13 +258,25 @@ async function backfillMissingCovers(ctx: any, clientId: string, accessToken: st
   for (const [index, game] of (games || []).entries()) {
     if (index > 0) await delay(300)
 
-    const safeTitle = String(game.title || '').replaceAll('\\', '\\\\').replaceAll('"', '\\"')
-    const matches = await requestIGDB(
-      `search "${safeTitle}"; fields id,name,first_release_date,cover.image_id; limit 10;`,
-      clientId,
-      accessToken,
-    )
-    const match = getIGDBCoverMatch(matches, game.title, game.release_year ?? null)
+    const directIGDBId = DIRECT_IGDB_COVER_IDS[game.id]
+    let matches: Array<Record<string, any>>
+    if (directIGDBId) {
+      matches = await requestIGDB(
+        `fields id,name,first_release_date,cover.image_id; where id = ${directIGDBId}; limit 1;`,
+        clientId,
+        accessToken,
+      )
+    } else {
+      const safeTitle = String(game.title || '').replaceAll('\\', '\\\\').replaceAll('"', '\\"')
+      matches = await requestIGDB(
+        `search "${safeTitle}"; fields id,name,first_release_date,cover.image_id; limit 10;`,
+        clientId,
+        accessToken,
+      )
+    }
+    const match = directIGDBId
+      ? matches.find((candidate) => typeof candidate.cover?.image_id === 'string') ?? null
+      : getIGDBCoverMatch(matches, game.title, game.release_year ?? null)
     if (!match) {
       unmatched += 1
       continue
