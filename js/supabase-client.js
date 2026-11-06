@@ -66,7 +66,7 @@
   async function loadGameCatalog() {
     const { data, error } = await client
       .from('atlas_games')
-      .select('id, title, franchise, release_year, platforms, genre_tags, mechanic_tags, theme_tags, play_contexts, short_description, is_profile_selectable, is_recommendation_candidate, curation_score, sort_order, source, source_id, cover_url')
+      .select('id, title, franchise, release_year, platforms, genre_tags, mechanic_tags, theme_tags, play_contexts, short_description, is_profile_selectable, is_recommendation_candidate, curation_score, sort_order, source, source_id, cover_url, series_key, series_path, series_order, series_requires, emulation_tier')
       .eq('is_profile_selectable', true)
       .order('sort_order', { ascending: true });
 
@@ -77,7 +77,7 @@
   async function invokeIGDBCatalog(body) {
     const { data, error } = await client.functions.invoke('igdb-catalog', { body });
     if (error) {
-      let message = 'Não foi possível acessar o catálogo do IGDB.';
+      let message = 'Não foi possível atualizar as capas do catálogo.';
       let code = '';
       try {
         if (error.context instanceof Response) {
@@ -97,14 +97,6 @@
     return data;
   }
 
-  async function searchIGDB(query) {
-    return invokeIGDBCatalog({ action: 'search', query });
-  }
-
-  async function importIGDBGame(gameId) {
-    return invokeIGDBCatalog({ action: 'import', gameId });
-  }
-
   async function backfillIGDBCovers() {
     return invokeIGDBCatalog({ action: 'backfill-covers' });
   }
@@ -114,8 +106,6 @@
     loadSave,
     saveProgress,
     loadGameCatalog,
-    searchIGDB,
-    importIGDBGame,
     backfillIGDBCovers,
   });
 })();

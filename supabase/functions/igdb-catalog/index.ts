@@ -1,20 +1,5 @@
 import { withSupabase } from 'npm:@supabase/server@1'
 
-const GAME_FIELDS = [
-  'id',
-  'name',
-  'slug',
-  'summary',
-  'first_release_date',
-  'franchise.name',
-  'franchises.name',
-  'cover.image_id',
-  'genres.name',
-  'platforms.name',
-  'themes.name',
-  'keywords.name',
-].join(',')
-
 let cachedAppToken: { value: string; expiresAt: number } | null = null
 
 const DIRECT_IGDB_COVER_IDS: Record<string, number> = {
@@ -36,91 +21,6 @@ class HttpError extends Error {
 
 function jsonResponse(body: Record<string, unknown>, status = 200) {
   return Response.json(body, { status })
-}
-
-function cleanStrings(values: Array<{ name?: string } | string> | undefined, max = 30) {
-  if (!Array.isArray(values)) return []
-  return [...new Set(values
-    .map((value) => typeof value === 'string' ? value : value?.name)
-    .filter((value): value is string => typeof value === 'string')
-    .map((value) => value.trim())
-    .filter(Boolean))]
-    .slice(0, max)
-}
-
-function slugTag(value: string) {
-  const normalized = value
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLocaleLowerCase('en')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-
-  const aliases: Record<string, string> = {
-    'role-playing-rpg': 'rpg',
-    'role-playing': 'rpg',
-    'rpg': 'rpg',
-    'platform': 'platformer',
-    'platformer': 'platformer',
-    'real-time-strategy-rts': 'strategy',
-    'turn-based-strategy': 'strategy',
-    'strategy': 'strategy',
-    'point-and-click': 'adventure',
-  }
-  return aliases[normalized] || normalized
-}
-
-function derivePlayContexts(platforms: string[]) {
-  const contexts = new Set<string>()
-  for (const platform of platforms) {
-    const name = platform.toLocaleLowerCase('en')
-    if (/(windows|pc|linux|mac|steam deck|steam os)/.test(name)) contexts.add('pc')
-    if (name.includes('android')) contexts.add('android')
-
-    // Consoles and handhelds are valid in the user's current PC emulation setup.
-    if (/(nintendo|game boy|gameboy|gba|gbc|^gb$|^ds$|^3ds$|^nes$|^snes$|^n64$|playstation|^ps[1-5]$|xbox|sega|dreamcast|atari|arcade)/i.test(platform)) {
-      contexts.add('pc-emulation')
-    }
-  }
-  return [...contexts]
-}
-
-function normalizeGame(game: Record<string, any>) {
-  const platforms = cleanStrings(game.platforms)
-  const genres = cleanStrings(game.genres)
-  const themes = cleanStrings(game.themes)
-  const keywords = cleanStrings(game.keywords, 40)
-  const franchise = game.franchise?.name || game.franchises?.[0]?.name || null
-  const imageId = typeof game.cover?.image_id === 'string' ? game.cover.image_id : null
-  const releaseYear = Number.isFinite(game.first_release_date)
-    ? new Date(game.first_release_date * 1000).getUTCFullYear()
-    : null
-
-  return {
-    id: `igdb-${game.id}`,
-    title: String(game.name || '').trim(),
-    franchise,
-    release_year: releaseYear,
-    platforms,
-    genre_tags: [...new Set(genres.map(slugTag).filter(Boolean))],
-    mechanic_tags: [...new Set(keywords.map(slugTag).filter(Boolean))].slice(0, 30),
-    theme_tags: [...new Set(themes.map(slugTag).filter(Boolean))].slice(0, 20),
-    play_contexts: derivePlayContexts(platforms),
-    short_description: typeof game.summary === 'string' ? game.summary.trim().slice(0, 1200) : '',
-    is_profile_selectable: true,
-    is_recommendation_candidate: true,
-    curation_score: 1,
-    sort_order: 10000,
-    source: 'igdb',
-    source_id: String(game.id),
-    cover_url: imageId
-      ? `https://images.igdb.com/igdb/image/upload/t_cover_big/${imageId}.jpg`
-      : null,
-    external_metadata: {
-      slug: typeof game.slug === 'string' ? game.slug : null,
-      igdb_url: typeof game.slug === 'string' ? `https://www.igdb.com/games/${game.slug}` : null,
-    },
-  }
 }
 
 function normalizeTitle(value: string) {
@@ -230,9 +130,9 @@ async function requestIGDB(query: string, clientId: string, accessToken: string)
     const detail = (await response.text()).slice(0, 600)
     console.error('IGDB games request failed:', response.status, detail)
     if (response.status === 429) {
-      throw new HttpError(429, 'IGDB_RATE_LIMIT', 'A busca atingiu o limite temporário do IGDB. Aguarde um pouco e tente novamente.')
+      throw new HttpError(429, 'IGDB_RATE_LIMIT', 'A atualização das capas atingiu o limite temporário do IGDB. Aguarde um pouco e tente novamente.')
     }
-    throw new HttpError(502, 'IGDB_REQUEST_FAILED', 'O IGDB não respondeu à busca agora. Tente novamente em instantes.')
+    throw new HttpError(502, 'IGDB_REQUEST_FAILED', 'O IGDB não respondeu à atualização das capas agora. Tente novamente em instantes.')
   }
 
   return await response.json() as Array<Record<string, any>>
@@ -322,70 +222,24 @@ export default {
     try {
       const payload = await request.json().catch(() => null)
       if (!payload || typeof payload !== 'object') {
-        throw new HttpError(400, 'INVALID_BODY', 'A solicitação da busca está inválida.')
+        throw new HttpError(400, 'INVALID_BODY', 'A solicitação de atualização das capas está inválida.')
       }
 
       const action = payload.action
-      if (!['search', 'import', 'backfill-covers'].includes(action)) {
+      if (action !== 'backfill-covers') {
         throw new HttpError(400, 'INVALID_ACTION', 'A ação solicitada não existe.')
       }
 
       const { clientId, clientSecret } = await getIGDBCredentials()
       const accessToken = await getAppAccessToken(clientId, clientSecret)
-
-      if (action === 'backfill-covers') {
-        return jsonResponse(await backfillMissingCovers(ctx, clientId, accessToken))
-      }
-
-      if (action === 'search') {
-        const rawQuery = typeof payload.query === 'string' ? payload.query.trim().replace(/\s+/g, ' ') : ''
-        if (rawQuery.length < 2 || rawQuery.length > 100) {
-          throw new HttpError(400, 'INVALID_QUERY', 'Digite pelo menos 2 caracteres para buscar um jogo.')
-        }
-
-        const safeQuery = rawQuery.replaceAll('\\', '\\\\').replaceAll('"', '\\"')
-        const games = await requestIGDB(
-          `search "${safeQuery}"; fields ${GAME_FIELDS}; limit 10;`,
-          clientId,
-          accessToken,
-        )
-        return jsonResponse({ results: games.map(normalizeGame) })
-      }
-
-      const externalId = typeof payload.gameId === 'string' || typeof payload.gameId === 'number'
-        ? String(payload.gameId)
-        : ''
-      if (!/^\d{1,12}$/.test(externalId)) {
-        throw new HttpError(400, 'INVALID_GAME_ID', 'O jogo selecionado não tem um identificador válido.')
-      }
-
-      const games = await requestIGDB(
-        `fields ${GAME_FIELDS}; where id = ${externalId}; limit 1;`,
-        clientId,
-        accessToken,
-      )
-      if (!games.length) throw new HttpError(404, 'GAME_NOT_FOUND', 'Esse jogo não foi encontrado no IGDB.')
-
-      const catalogEntry = normalizeGame(games[0])
-      const { data, error } = await ctx.supabaseAdmin
-        .from('atlas_games')
-        .upsert(catalogEntry, { onConflict: 'id' })
-        .select('id, title, franchise, release_year, platforms, genre_tags, mechanic_tags, theme_tags, play_contexts, short_description, is_profile_selectable, is_recommendation_candidate, curation_score, sort_order, source, source_id, cover_url, external_metadata')
-        .single()
-
-      if (error) {
-        console.error('IGDB catalog upsert failed:', error.code, error.message)
-        throw new HttpError(500, 'CATALOG_IMPORT_FAILED', 'Não foi possível adicionar o jogo ao catálogo do Atlas.')
-      }
-
-      return jsonResponse({ game: data })
+      return jsonResponse(await backfillMissingCovers(ctx, clientId, accessToken))
     } catch (error) {
       if (error instanceof HttpError) {
         return jsonResponse({ error: error.message, code: error.code }, error.status)
       }
       console.error('IGDB catalog function failed:', error)
       return jsonResponse({
-        error: 'Não foi possível concluir a busca no IGDB agora. Tente novamente em instantes.',
+        error: 'Não foi possível concluir a atualização das capas agora. Tente novamente em instantes.',
         code: 'INTERNAL_ERROR',
       }, 500)
     }

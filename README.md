@@ -11,9 +11,9 @@ Projeto pessoal para explorar a história dos videogames. O repositório contém
 - A transição entre abertura e login usa o efeito de papel em `assets/audio/paper.mp3`, com uma passagem visual curta.
 - A tela de acesso permite criar conta e entrar com e-mail e senha pelo Supabase Auth.
 - Depois de entrar, o Atlas cria ou carrega um save vinculado à conta. A estrutura do banco e as regras de acesso ficam em `supabase/schema.sql`; siga `SUPABASE_SETUP.md` para ativá-las no projeto Supabase.
-- Depois do login, a configuração inicial permite marcar jogos conhecidos, indicar o que gostou e seus favoritos, escolher onde consegue jogar e definir se aceita rejogar.
-- O Atlas apresenta uma primeira sugestão explicada por regras simples de afinidade, acesso e curadoria. A preferência é salva na conta e pode ser ajustada antes de começar.
-- O catálogo inicial fica em `supabase/seed_games.sql`. A tela de perfil também pesquisa o IGDB; cada resultado só entra no catálogo compartilhado depois que você escolhe adicioná-lo.
+- Depois do login, a configuração inicial permite marcar jogos conhecidos, indicar favoritos e experiências que não agradaram, escolher onde consegue jogar, informar o limite aproximado de emulação e decidir se aceita rejogar.
+- O Atlas apresenta uma primeira sugestão explicada por regras de afinidade, acesso, curadoria e pré-requisitos cronológicos de franquias. A preferência é salva na conta e pode ser ajustada antes de começar.
+- O catálogo inicial fica em `supabase/seed_games.sql`; os dados entram por curadoria no banco, e as capas ausentes podem ser preenchidas pelo IGDB.
 - A abertura e o login aparecem em janelas com pelo menos 1024 × 600 px; em telas menores, o Atlas mostra um aviso de acesso pelo computador. O bloqueio usa as dimensões da janela, não identifica o tipo de dispositivo.
 - As transições respeitam a preferência do sistema por movimento reduzido e ficam recortadas dentro da janela para evitar barras de rolagem.
 - A cena do Blender é um estudo separado de composição e iluminação, não é necessária para abrir a página.
@@ -24,7 +24,7 @@ Projeto pessoal para explorar a história dos videogames. O repositório contém
 - Blender para o estudo de cena 3D.
 - Fontes DM Sans e Marcellus carregadas do Google Fonts, com fontes locais alternativas.
 
-O site não precisa de uma etapa de compilação e carrega o SDK do Supabase por CDN. Para publicar a busca do IGDB, instale o Supabase CLI e siga `SUPABASE_SETUP.md`.
+O site não precisa de uma etapa de compilação e carrega o SDK do Supabase por CDN. Para publicar o preenchimento de capas do IGDB, instale o Supabase CLI e siga `SUPABASE_SETUP.md`.
 
 ## Como abrir
 
@@ -62,11 +62,11 @@ Se a música não começar automaticamente, clique no controle de alto-falante n
 - `index.html` — página e carregamento dos estilos e scripts.
 - `css/style.css` — aparência, animações e regras responsivas das telas de entrada e login.
 - `js/app.js` — navegação, autenticação, configuração do perfil inicial e primeira recomendação.
-- `js/recommendations.js` — regras iniciais de recomendação por afinidade e descoberta.
+- `js/recommendations.js` — regras de afinidade, acesso, limite de emulação, sinais positivos e negativos e ordem de séries.
 - `js/supabase-config.js` e `js/supabase-client.js` — configuração publicável e integração com Auth, catálogo e saves.
 - `supabase/schema.sql` — tabela de save e políticas RLS que isolam os dados de cada conta.
 - `supabase/seed_games.sql` — catálogo inicial, colunas de origem/metadados e política de leitura para contas autenticadas.
-- `supabase/functions/igdb-catalog/index.ts` — busca/importação autenticada no IGDB; mantém credenciais no servidor.
+- `supabase/functions/igdb-catalog/index.ts` — consulta capas ausentes no IGDB; mantém credenciais no servidor.
 - `SUPABASE_SETUP.md` — instruções para configurar redirecionamentos, aplicar SQL, guardar as credenciais e publicar a função.
 - `assets/video/loop.mp4` — vídeo usado como fundo animado.
 - `assets/video/atlas title game.mp4` — vídeo de abertura mantido como material do projeto; ainda não é usado na tela atual.
